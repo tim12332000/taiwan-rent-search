@@ -47,9 +47,15 @@
   - 扁平化輸出為 CSV
   - 自動建立 `data/` 輸出路徑
 
+- [x] **條件分析核心** (`src/analysis.py`)
+  - 從既有 CSV 讀取房源
+  - 支援可重複使用的條件篩選與排序
+  - 支援目的地地址、通勤時間、行政區、關鍵字、流理臺需求
+  - 產出分析後的候選 CSV
+
 ### 測試代碼
 - [x] 創建 `tests/test_scrapers.py`
-- [x] 27個測試用例
+- [x] 35個測試用例
   - 數據模型測試
   - 爬蟲類初始化
   - User-Agent 輪換
@@ -58,6 +64,7 @@
   - 離線 HTML 卡片解析
   - mock scrape 流程驗證
   - CSV 匯出與 CLI 入口驗證
+  - 條件分析與通勤估算驗證
 
 ## 🔧 當前狀態
 
@@ -68,6 +75,7 @@
 4. ✅ **離線解析測試補強** - 591 卡片解析、缺欄位 fallback、mock scrape 流程已納入測試
 5. ✅ **現行 591 列表頁相容** - 已支援 `div.recommend-ware` 結構
 6. ✅ **第一份真實資料檔已產出** - `data/591_taipei_*.csv`，目前實跑為 20 筆
+7. ✅ **條件分析核心已完成** - 已可根據條件輸出候選清單與分析 CSV
 
 ### 目前缺口
 1. ⏳ **只有單頁資料** - 尚未做 pagination 與跨頁去重
@@ -76,6 +84,7 @@
 4. ⏳ **缺少 detail-page enrichment** - 需要第二階段補詳頁資料
 5. ⏳ **缺少長期抗 drift 測試** - 還沒保存真實 591 fixture 做回歸保護
 6. ⏳ **district 參數尚未接線** - 目前 API 簽名保留，但還沒映射到查詢條件
+7. ⏳ **圖片評分尚未接線** - 目前只能先做文字訊號與待看圖標記
 
 ## 📋 下一步工作
 
@@ -85,20 +94,25 @@
    python -m src.main --county 台北市
    ```
 
-2. **運行單元測試**
+2. **依條件輸出候選清單**
    ```bash
-   pytest tests/test_scrapers.py -v
+   python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-kitchen-sink --top 5
    ```
 
-3. **運行含覆蓋率的驗證**
+3. **運行單元測試**
    ```bash
-   pytest tests/test_scrapers.py -v --cov=src
+   pytest tests/test_scrapers.py tests/test_analysis.py -v
    ```
 
-4. **提交本輪真實抓取能力**
+4. **運行含覆蓋率的驗證**
+   ```bash
+   pytest tests/test_scrapers.py tests/test_analysis.py -v --cov=src
+   ```
+
+5. **提交分析核心**
    ```bash
    git add .
-   git commit -m "加入真實 591 列表抓取與 CSV 匯出"
+   git commit -m "加入可重複使用的租屋條件分析核心"
    ```
 
 ### 在 Codex 中執行（推薦）
@@ -142,6 +156,7 @@ $ralph "執行 git 提交"
 taiwan-rent-search/
 ├── src/
 │   ├── __init__.py
+│   ├── analysis.py            ✅ 完成
 │   ├── main.py                ✅ 完成
 │   ├── models.py              ✅ 完成
 │   └── scrapers/
@@ -190,11 +205,12 @@ omx --madmax --high
 ## 💡 提示
 
 - 所有代碼已設置，邏輯就緒
-- 目前測試集共 27 個案例，已全數通過
+- 目前測試集共 35 個案例，已全數通過
 - 已產出第一份真實 CSV：`data/591_taipei_*.csv`
+- 已可產出條件分析 CSV：`data/*analysis*.csv`
 - 列表頁抓取已可工作，但仍是單頁版與列表欄位版
 - 覆蓋率驗證已通過，總覆蓋率為 89%
-- 下一步最有價值的是 pagination + 詳頁補強
+- 下一步最有價值的是 pagination + 詳頁補強 + 圖片評分
 
 ---
 
