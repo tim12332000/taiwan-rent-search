@@ -5,12 +5,14 @@ from datetime import datetime
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+import csv
 
 # 添加項目路徑
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.models import HousingData, Location, Contact
+from src.main import CSV_FIELDNAMES, build_output_path, export_to_csv, main as main_entry, sanitize_csv_value, scrape_to_csv
 from src.scrapers.base import BaseScraper
 from src.scrapers.fang591 import Fang591Scraper
 
@@ -116,9 +118,9 @@ class TestFang591Scraper:
 
     def test_map_county_code(self):
         """測試縣市代碼映射"""
-        assert Fang591Scraper._map_county_code("台北市") == "a1001"
-        assert Fang591Scraper._map_county_code("新北市") == "a2000"
-        assert Fang591Scraper._map_county_code("台中市") == "a3000"
+        assert Fang591Scraper._map_county_code("台北市") == "1"
+        assert Fang591Scraper._map_county_code("新北市") == "3"
+        assert Fang591Scraper._map_county_code("台中市") == "8"
 
     def test_extract_price(self):
         """測試租金提取"""
@@ -139,7 +141,8 @@ class TestFang591Scraper:
         scraper = Fang591Scraper()
         url = scraper._build_search_url("台北市")
         assert "591" in url
-        assert "kind=2" in url or "search" in url
+        assert "kind=2" in url
+        assert "region=1" in url
 
     def test_scrape_empty(self):
         """測試爬蟲在無效HTML時返回空列表"""
@@ -272,7 +275,7 @@ class TestFang591Scraper:
         )
         calls = {"count": 0}
 
-        def fake_parse_item(item):
+        def fake_parse_item(item, **kwargs):
             calls["count"] += 1
             if calls["count"] == 1:
                 raise ValueError("boom")
@@ -288,6 +291,226 @@ class TestFang591Scraper:
         result = scraper.scrape()
 
         assert result == [good_data]
+
+    def test_parse_live_card_structure(self):
+        """測試現行 591 recommend-ware 卡片結構。"""
+        scraper = Fang591Scraper()
+        item = scraper._parse_html(
+            """
+            <div class="recommend-ware">
+                <a class="img-container" href="https://rent.591.com.tw/20949608">
+                    <img data-src="https://img.example.com/cover.jpg" />
+                </a>
+                <div class="content">
+                    <a class="title" href="https://rent.591.com.tw/20949608">清新美景電梯兩房雙車位</a>
+                    <div class="address-info">
+                        <span class="address"><span class="community">清新美景</span><span>文山區-富山路</span></span>
+                        <span class="area">2房/</span>
+                        <span class="area">31.6坪</span>
+                    </div>
+                    <div class="distance-info">
+                        <span class="desc">距中港抽水站</span>
+                        <span class="distance">404公尺</span>
+                    </div>
+                    <div class="price-info"><span class="price">45,000</span></div>
+                </div>
+            </div>
+            """
+        ).find("div", class_="recommend-ware")
+
+        data = scraper._parse_item(item, fallback_county="台北市")
+
+        assert data is not None
+        assert data.title == "清新美景電梯兩房雙車位"
+        assert data.url == "https://rent.591.com.tw/20949608"
+        assert data.price == 45000
+        assert data.location.county == "台北市"
+        assert data.location.district == "文山區"
+        assert data.location.area == "富山路"
+        assert data.room_type == "2房"
+        assert data.bedrooms == 2
+        assert data.floor_area == 31.6
+        assert data.images == ["https://img.example.com/cover.jpg"]
+
+    def test_parse_live_card_missing_optional_fields_uses_defaults(self):
+        """測試現行卡片缺欄位時仍能安全解析。"""
+        scraper = Fang591Scraper()
+        item = scraper._parse_html(
+            """
+            <div class="recommend-ware">
+                <div class="content">
+                    <a class="title" href="https://rent.591.com.tw/20151975">臺北市中山區相鄰花博公園近捷運雅房</a>
+                    <div class="address-info">
+                        <span class="address"><span>中山區-農安街</span></span>
+                        <span class="area">9坪</span>
+                    </div>
+                    <div class="price-info"><span class="price">14,500</span></div>
+                </div>
+            </div>
+            """
+        ).find("div", class_="recommend-ware")
+
+        data = scraper._parse_item(item, fallback_county="台北市")
+
+        assert data is not None
+        assert data.location.county == "台北市"
+        assert data.location.district == "中山區"
+        assert data.location.area == "農安街"
+        assert data.room_type == ""
+        assert data.images == []
+        assert data.contact.name == "未公開"
+        assert data.floor_area == 9.0
+
+    def test_scrape_parses_live_cards_from_mocked_response(self, monkeypatch):
+        """測試 scrape() 可解析現行 recommend-ware 列表。"""
+        scraper = Fang591Scraper()
+        html = """
+        <div class="recommend-ware">
+            <div class="content">
+                <a class="title" href="https://rent.591.com.tw/10001">第一筆</a>
+                <div class="address-info">
+                    <span class="address"><span>文山區-久康街</span></span>
+                    <span class="area">2房/</span>
+                    <span class="area">20坪</span>
+                </div>
+                <div class="price-info"><span class="price">15,500</span></div>
+            </div>
+        </div>
+        <div class="recommend-ware">
+            <div class="content">
+                <a class="title" href="https://rent.591.com.tw/10002">第二筆</a>
+                <div class="address-info">
+                    <span class="address"><span>大同區-重慶北路三段</span></span>
+                    <span class="area">35坪</span>
+                </div>
+                <div class="price-info"><span class="price">35,500</span></div>
+            </div>
+        </div>
+        """
+
+        monkeypatch.setattr(
+            scraper,
+            "_fetch_url",
+            lambda url, **kwargs: SimpleNamespace(text=html),
+        )
+
+        result = scraper.scrape(county="台北市")
+
+        assert len(result) == 2
+        assert result[0].location.district == "文山區"
+        assert result[0].bedrooms == 2
+        assert result[1].location.district == "大同區"
+        assert result[1].floor_area == 35.0
+
+
+class TestCsvExport:
+    """測試 CSV 匯出流程。"""
+
+    @staticmethod
+    def _sample_records():
+        return [
+            HousingData(
+                id="591-1",
+                platform="591",
+                title="第一筆",
+                price=10000,
+                location=Location(county="台北市", district="文山區", area="久康街"),
+                room_type="套房",
+                bedrooms=1,
+                bathrooms=1,
+                floor_area=10.0,
+                floor=None,
+                contact=Contact(name="王小明"),
+                images=["https://img.example.com/1.jpg"],
+                description="desc",
+                url="https://rent.591.com.tw/1",
+                scraped_at=datetime.now(),
+                updated_at=datetime.now(),
+            ),
+            HousingData(
+                id="591-2",
+                platform="591",
+                title="第二筆",
+                price=20000,
+                location=Location(county="台北市", district="中山區", area="農安街"),
+                room_type="2房",
+                bedrooms=2,
+                bathrooms=1,
+                floor_area=20.0,
+                floor=None,
+                contact=Contact(name="陳小姐"),
+                images=[],
+                description="desc2",
+                url="https://rent.591.com.tw/2",
+                scraped_at=datetime.now(),
+                updated_at=datetime.now(),
+            ),
+        ]
+
+    def test_export_to_csv_writes_flattened_rows(self, tmp_path):
+        records = self._sample_records()
+
+        output = tmp_path / "sample.csv"
+        export_to_csv(records, output)
+
+        with output.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            rows = list(reader)
+
+        assert reader.fieldnames == CSV_FIELDNAMES
+        assert len(rows) == 2
+        assert rows[0]["location_county"] == "台北市"
+        assert rows[0]["contact_name"] == "王小明"
+        assert rows[1]["title"] == "第二筆"
+
+    def test_export_to_csv_empty_results_writes_header_only(self, tmp_path):
+        output = tmp_path / "empty.csv"
+        export_to_csv([], output)
+
+        with output.open("r", encoding="utf-8-sig", newline="") as handle:
+            rows = list(csv.reader(handle))
+
+        assert len(rows) == 1
+        assert rows[0] == CSV_FIELDNAMES
+
+    def test_sanitize_csv_value_prefixes_formula_like_strings(self):
+        assert sanitize_csv_value("=SUM(A1:A2)") == "'=SUM(A1:A2)"
+        assert sanitize_csv_value("+cmd") == "'+cmd"
+        assert sanitize_csv_value("@foo") == "'@foo"
+        assert sanitize_csv_value("正常文字") == "正常文字"
+
+    def test_build_output_path_uses_county_slug(self):
+        path = build_output_path("台北市")
+        assert path.parent.name == "data"
+        assert path.name.startswith("591_taipei_")
+        assert path.suffix == ".csv"
+
+    def test_scrape_to_csv_writes_records_with_mocked_scraper(self, monkeypatch, tmp_path):
+        records = self._sample_records()
+
+        monkeypatch.setattr(Fang591Scraper, "scrape", lambda self, county="": records)
+
+        output = tmp_path / "from-scrape.csv"
+        path, written_records = scrape_to_csv("台北市", output_path=output, delay=0)
+
+        assert path == output
+        assert written_records == records
+        assert output.exists()
+
+    def test_main_prints_export_summary(self, monkeypatch, capsys, tmp_path):
+        output = tmp_path / "cli.csv"
+
+        monkeypatch.setattr(
+            "src.main.scrape_to_csv",
+            lambda county, output_path=None, delay=2.0: (output, self._sample_records()),
+        )
+        monkeypatch.setattr(sys, "argv", ["src.main", "--county", "台北市", "--output", str(output)])
+
+        main_entry()
+        out = capsys.readouterr().out
+
+        assert "CSV exported:" in out
+        assert "Records: 2" in out
 
 
 class TestLocationAndContact:

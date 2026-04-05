@@ -8,6 +8,7 @@
 taiwan-rent-search/
 ├── src/
 │   ├── __init__.py
+│   ├── main.py            # 執行抓取並匯出 CSV
 │   ├── models.py          # 數據模型
 │   └── scrapers/          # 各平台爬蟲
 │       ├── __init__.py
@@ -40,6 +41,9 @@ pytest tests/test_scrapers.py -v
 
 # 執行含覆蓋率的驗證
 pytest tests/test_scrapers.py -v --cov=src
+
+# 抓取台北市 591 列表並輸出 CSV
+python -m src.main --county 台北市
 ```
 
 ## 進度
@@ -48,9 +52,10 @@ pytest tests/test_scrapers.py -v --cov=src
 - [x] 591房屋爬蟲框架
 - [x] 資料模型
 - [x] 測試基礎建設與離線解析驗證
+- [x] 第一份 591 CSV 匯出
 - [ ] 圖片下載 & AI審核
 - [ ] 永慶/信義平台
-- [ ] 數據存儲 (CSV)
+- [x] 數據存儲 (CSV)
 - [ ] 排程系統
 - [ ] 後端 API
 - [ ] 前端網站
