@@ -14,8 +14,9 @@ taiwan-rent-search/
 │   └── scrapers/          # 各平台爬蟲
 │       ├── __init__.py
 │       ├── base.py        # 基礎爬蟲類
-│       └── fang591.py     # 591房屋爬蟲
-│       └── mixrent.py     # MixRent 聚合搜尋爬蟲
+│       ├── fang591.py     # 591房屋爬蟲
+│       ├── mixrent.py     # MixRent 聚合搜尋爬蟲
+│       └── housefun.py    # 好房網 gateway 協議層
 ├── tests/
 │   ├── __init__.py
 │   └── test_scrapers.py   # 爬蟲測試
@@ -67,6 +68,7 @@ python -m src.analysis --destination-address "台北市信義區松仁路100號 
 - [x] 平台研究
 - [x] 591房屋爬蟲框架
 - [x] MixRent 聚合爬蟲
+- [x] 好房網 gateway 探勘層
 - [x] 資料模型
 - [x] 測試基礎建設與離線解析驗證
 - [x] 第一份 591 CSV 匯出

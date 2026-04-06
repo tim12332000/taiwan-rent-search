@@ -25,6 +25,7 @@ from src.main import (
 )
 from src.scrapers.base import BaseScraper
 from src.scrapers.fang591 import Fang591Scraper
+from src.scrapers.housefun import HousefunScraper
 from src.scrapers.mixrent import MixRentScraper
 
 
@@ -515,6 +516,62 @@ class TestMixRentScraper:
         ).find("div", class_="rental_result")
 
         assert scraper._parse_item(item) is None
+
+
+class TestHousefunScraper:
+    """測試好房網 gateway scaffold。"""
+
+    def test_scraper_initialization(self):
+        scraper = HousefunScraper()
+        assert scraper.name == "Housefun"
+        assert scraper.delay == 1.5
+
+    def test_gateway_encode_decode_round_trip(self):
+        payload = {"Method": "Inquire", "Data": {"CityName": "台北市", "PMPage": "1"}}
+
+        encoded = HousefunScraper._encode_gateway_data(payload)
+        decoded = HousefunScraper._decode_gateway_data(encoded)
+
+        assert decoded == payload
+
+    def test_build_search_payload_contains_taipei_defaults(self):
+        scraper = HousefunScraper()
+        payload = scraper._build_search_payload("台北市")
+
+        assert payload["Method"] == "Inquire"
+        assert payload["Data"]["CityName"] == "台北市"
+        assert payload["Data"]["AreaName"] == "台北市"
+        assert payload["Data"]["PMPage"] == "1"
+
+    def test_fetch_search_page_decodes_gateway_response(self, monkeypatch):
+        scraper = HousefunScraper()
+        fake_payload = {
+            "Method": "Inquire",
+            "Status": "1",
+            "StatusMessage": "Success",
+            "StatusCode": "1",
+            "Data": {
+                "SearchContent": "<div>ok</div>",
+                "PageCount": "1/10",
+                "HouseCount": "100",
+                "AddDataSourceCache": "0",
+            },
+        }
+        encoded_response = HousefunScraper._encode_gateway_data(fake_payload)
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return encoded_response
+
+        monkeypatch.setattr(scraper.session, "post", lambda *args, **kwargs: FakeResponse())
+
+        result = scraper.fetch_search_page("台北市")
+
+        assert result["Status"] == "1"
+        assert result["Data"]["HouseCount"] == "100"
 
 
 class TestCsvExport:
