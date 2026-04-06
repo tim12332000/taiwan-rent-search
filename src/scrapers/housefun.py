@@ -64,7 +64,7 @@ class HousefunScraper(BaseScraper):
             return {key: cls._decode_gateway_data(val) for key, val in data.items()}
         return cls._base64_decode(data)
 
-    def _build_search_payload(self, county: str = "台北市") -> dict[str, Any]:
+    def _build_search_payload(self, county: str = "台北市", page: int = 1) -> dict[str, Any]:
         """建構當前已驗證可回應的 gateway payload。"""
         return {
             "Method": "Inquire",
@@ -132,7 +132,7 @@ class HousefunScraper(BaseScraper):
                 "OTLimPet": "",
                 "TGType": "",
                 "EquipmentID": "",
-                "PMPage": "1",
+                "PMPage": str(page),
                 "BrowseMode": "ShowModePics",
                 "CenterLat": "",
                 "CenterLng": "",
@@ -146,9 +146,9 @@ class HousefunScraper(BaseScraper):
             },
         }
 
-    def fetch_search_page(self, county: str = "台北市") -> dict[str, Any]:
+    def fetch_search_page(self, county: str = "台北市", page: int = 1) -> dict[str, Any]:
         """呼叫官方 gateway 並回傳解碼後的 JSON。"""
-        payload = self._build_search_payload(county=county)
+        payload = self._build_search_payload(county=county, page=page)
         body = "RequestPackage=" + json.dumps(
             self._encode_gateway_data(payload),
             ensure_ascii=False,
@@ -166,24 +166,26 @@ class HousefunScraper(BaseScraper):
         decoded = self._decode_gateway_data(response.json())
         return decoded
 
-    def scrape(self, county: str = "台北市", **kwargs):
+    def scrape(self, county: str = "台北市", max_pages: int = 3, **kwargs):
         """抓取好房網搜尋結果並映射到統一資料模型。"""
-        payload = self.fetch_search_page(county=county)
-        logger.info(
-            "Housefun gateway probe ok: HouseCount=%s PageCount=%s",
-            payload.get("Data", {}).get("HouseCount"),
-            payload.get("Data", {}).get("PageCount"),
-        )
-
-        search_content = payload.get("Data", {}).get("SearchContent", "")
-        soup = self._parse_html(search_content)
-        articles = soup.select("article.DataList")
         listings: list[HousingData] = []
+        for page in range(1, max_pages + 1):
+            payload = self.fetch_search_page(county=county, page=page)
+            logger.info(
+                "Housefun gateway probe ok: HouseCount=%s PageCount=%s",
+                payload.get("Data", {}).get("HouseCount"),
+                payload.get("Data", {}).get("PageCount"),
+            )
+            search_content = payload.get("Data", {}).get("SearchContent", "")
+            soup = self._parse_html(search_content)
+            articles = soup.select("article.DataList")
+            if not articles:
+                break
 
-        for article in articles:
-            listing = self._parse_item(article, fallback_county=county)
-            if listing:
-                listings.append(listing)
+            for article in articles:
+                listing = self._parse_item(article, fallback_county=county)
+                if listing:
+                    listings.append(listing)
 
         logger.info("✓ 成功解析 Housefun %s 筆台北房源", len(listings))
         return listings

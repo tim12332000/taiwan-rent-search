@@ -560,12 +560,12 @@ class TestHousefunScraper:
 
     def test_build_search_payload_contains_taipei_defaults(self):
         scraper = HousefunScraper()
-        payload = scraper._build_search_payload("台北市")
+        payload = scraper._build_search_payload("台北市", page=2)
 
         assert payload["Method"] == "Inquire"
         assert payload["Data"]["CityName"] == "台北市"
         assert payload["Data"]["AreaName"] == "台北市"
-        assert payload["Data"]["PMPage"] == "1"
+        assert payload["Data"]["PMPage"] == "2"
 
     def test_fetch_search_page_decodes_gateway_response(self, monkeypatch):
         scraper = HousefunScraper()
@@ -592,7 +592,7 @@ class TestHousefunScraper:
 
         monkeypatch.setattr(scraper.session, "post", lambda *args, **kwargs: FakeResponse())
 
-        result = scraper.fetch_search_page("台北市")
+        result = scraper.fetch_search_page("台北市", page=2)
 
         assert result["Status"] == "1"
         assert result["Data"]["HouseCount"] == "100"
@@ -657,35 +657,61 @@ class TestHousefunScraper:
 
     def test_scrape_parses_mocked_response(self, monkeypatch):
         scraper = HousefunScraper()
-        fake_payload = {
-            "Status": "1",
-            "Data": {
-                "HouseCount": "2",
-                "PageCount": "1/1",
-                "SearchContent": """
-                    <article class=\"DataList both\">
-                      <div class=\"Data\">
-                        <h3 class=\"title\"><a href=\"/rent/house/1/\">信義區套房</a></h3>
-                        <address class=\"addr\">台北市信義區光復南路</address>
-                        <span class=\"sectionList\"><span class=\"level\">1房(室)1廳1衛</span><span class=\"pattern\">樓層：3 / 12</span></span>
-                      </div>
-                      <div class=\"info\"><ul><li class=\"InfoList\"><span class=\"title\">租金：</span><span class=\"infos num\">20,000 元/月</span></li><li class=\"InfoList\"><span class=\"title\">坪數：</span><span class=\"infos\">12 坪</span></li></ul></div>
-                    </article>
-                    <article class=\"DataList both\">
-                      <div class=\"Data\">
-                        <h3 class=\"title\"><a href=\"/rent/house/2/\">新莊套房</a></h3>
-                        <address class=\"addr\">新北市新莊區中正路</address>
-                      </div>
-                    </article>
-                """,
+        payloads = [
+            {
+                "Status": "1",
+                "Data": {
+                    "HouseCount": "2",
+                    "PageCount": "1/2",
+                    "SearchContent": """
+                        <article class=\"DataList both\">
+                          <div class=\"Data\">
+                            <h3 class=\"title\"><a href=\"/rent/house/1/\">信義區套房</a></h3>
+                            <address class=\"addr\">台北市信義區光復南路</address>
+                            <span class=\"sectionList\"><span class=\"level\">1房(室)1廳1衛</span><span class=\"pattern\">樓層：3 / 12</span></span>
+                          </div>
+                          <div class=\"info\"><ul><li class=\"InfoList\"><span class=\"title\">租金：</span><span class=\"infos num\">20,000 元/月</span></li><li class=\"InfoList\"><span class=\"title\">坪數：</span><span class=\"infos\">12 坪</span></li></ul></div>
+                        </article>
+                        <article class=\"DataList both\">
+                          <div class=\"Data\">
+                            <h3 class=\"title\"><a href=\"/rent/house/2/\">新莊套房</a></h3>
+                            <address class=\"addr\">新北市新莊區中正路</address>
+                          </div>
+                        </article>
+                    """,
+                },
             },
-        }
+            {
+                "Status": "1",
+                "Data": {
+                    "HouseCount": "2",
+                    "PageCount": "2/2",
+                    "SearchContent": """
+                        <article class=\"DataList both\">
+                          <div class=\"Data\">
+                            <h3 class=\"title\"><a href=\"/rent/house/3/\">大安區套房</a></h3>
+                            <address class=\"addr\">台北市大安區和平東路</address>
+                            <span class=\"sectionList\"><span class=\"level\">1房(室)1廳1衛</span><span class=\"pattern\">樓層：5 / 12</span></span>
+                          </div>
+                          <div class=\"info\"><ul><li class=\"InfoList\"><span class=\"title\">租金：</span><span class=\"infos num\">22,000 元/月</span></li><li class=\"InfoList\"><span class=\"title\">坪數：</span><span class=\"infos\">15 坪</span></li></ul></div>
+                        </article>
+                    """,
+                },
+            },
+        ]
+        calls = {"index": 0}
 
-        monkeypatch.setattr(scraper, "fetch_search_page", lambda county="台北市": fake_payload)
-        result = scraper.scrape("台北市")
+        def fake_fetch(county="台北市", page=1):
+            payload = payloads[calls["index"]]
+            calls["index"] += 1
+            return payload
 
-        assert len(result) == 1
+        monkeypatch.setattr(scraper, "fetch_search_page", fake_fetch)
+        result = scraper.scrape("台北市", max_pages=2)
+
+        assert len(result) == 2
         assert result[0].location.district == "信義區"
+        assert result[1].location.district == "大安區"
 
 
 class TestDDRoomScraper:

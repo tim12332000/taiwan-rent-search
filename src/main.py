@@ -138,7 +138,7 @@ def scrape_sources(
                 records.extend(scraper.scrape(county=county, max_pages=max_pages))
         elif source == "housefun":
             with HousefunScraper(delay=delay) as scraper:
-                records.extend(scraper.scrape(county=county))
+                records.extend(scraper.scrape(county=county, max_pages=max_pages))
         elif source == "ddroom":
             with DDRoomScraper(delay=delay) as scraper:
                 records.extend(scraper.scrape(county=county, max_pages=max_pages))

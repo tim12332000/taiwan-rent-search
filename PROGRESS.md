@@ -50,6 +50,7 @@
   - 已重建 Base64 gateway 封包格式
   - 已可取得並解析官方 `SearchContent`
   - 已可過濾出台北市結果
+  - 已支援分頁抓取（由 `max_pages` 控制）
 
 - [x] **租租通 API 爬蟲** (`src/scrapers/ddroom.py`)
   - 已打通 `https://api.dd-room.com/api/v1/search`
@@ -113,11 +114,10 @@
 10. ✅ **多來源整合已完成** - 已可合併 `591 + MixRent` 並輸出整合資料池
 11. ✅ **Housefun 已正式接入** - 已可納入三來源整合資料池
 12. ✅ **DDRoom 已正式接入** - 已可納入四來源整合資料池
-13. ✅ **資料池已開始擴量** - `591`、`MixRent`、`DDRoom` 已支援分頁抓取
+13. ✅ **資料池已開始擴量** - `591`、`MixRent`、`Housefun`、`DDRoom` 已支援分頁抓取
 
 ### 目前缺口
-1. ⏳ **仍未全來源分頁** - `Housefun` 尚未做 pagination，`591`、`MixRent`、`DDRoom` 已支援
-2. ⏳ **來源數仍偏少** - `樂屋網` 等來源還沒接
+1. ⏳ **來源數仍偏少** - `樂屋網` 等來源還沒接
 3. ⏳ **欄位仍以列表頁為主** - `bathrooms`、`contact`、`floor` 等資訊仍多半缺失或推估
 4. ⏳ **缺少資料品質統計** - 尚未輸出 skipped rows、重複筆數、欄位完整率
 5. ⏳ **缺少 detail-page enrichment** - 需要第二階段補詳頁資料
@@ -265,7 +265,7 @@ omx --madmax --high
 - 已產出第一份多來源整合 CSV：`data/591-mixrent_taipei_*.csv`
 - 已產出第一份三來源整合 CSV：`data/591-housefun-mixrent_taipei_*.csv`
 - 已產出第一份四來源整合 CSV：`data/591-ddroom-housefun-mixrent_taipei_*.csv`
-- 最新四來源整合資料池約 `62` 筆
+- 最新四來源整合資料池約 `78` 筆
 - 已可產出條件分析 CSV：`data/*analysis*.csv`
 - 已可產出人看報告：`data/*shortlist*.md`
 - 已可產出圖文報告：`data/*shortlist*.html`

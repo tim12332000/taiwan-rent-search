@@ -90,6 +90,7 @@ python -m src.analysis --destination-address "台北市信義區松仁路100號 
 - [x] 三來源資料池
 - [x] 四來源資料池
 - [x] 現有來源開始擴量
+- [x] 四來源多頁資料池
 - [ ] 圖片下載 & AI審核
 - [ ] 永慶/信義平台
 - [x] 數據存儲 (CSV)
