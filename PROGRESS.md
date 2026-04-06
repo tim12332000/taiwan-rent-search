@@ -52,10 +52,11 @@
   - 支援可重複使用的條件篩選與排序
   - 支援目的地地址、通勤時間、行政區、關鍵字、流理臺需求
   - 產出分析後的候選 CSV
+  - 產出給人快速瀏覽的 Markdown shortlist 報告
 
 ### 測試代碼
 - [x] 創建 `tests/test_scrapers.py`
-- [x] 35個測試用例
+- [x] 40個測試用例
   - 數據模型測試
   - 爬蟲類初始化
   - User-Agent 輪換
@@ -65,6 +66,7 @@
   - mock scrape 流程驗證
   - CSV 匯出與 CLI 入口驗證
   - 條件分析與通勤估算驗證
+  - Markdown shortlist 報告驗證
 
 ## 🔧 當前狀態
 
@@ -76,6 +78,7 @@
 5. ✅ **現行 591 列表頁相容** - 已支援 `div.recommend-ware` 結構
 6. ✅ **第一份真實資料檔已產出** - `data/591_taipei_*.csv`，目前實跑為 20 筆
 7. ✅ **條件分析核心已完成** - 已可根據條件輸出候選清單與分析 CSV
+8. ✅ **快速瀏覽報告已完成** - 已可直接產出給人看的 shortlist Markdown
 
 ### 目前缺口
 1. ⏳ **只有單頁資料** - 尚未做 pagination 與跨頁去重
@@ -99,20 +102,25 @@
    python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-kitchen-sink --top 5
    ```
 
-3. **運行單元測試**
+3. **輸出給人快速瀏覽的 shortlist 報告**
+   ```bash
+   python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-kitchen-sink --top 10
+   ```
+
+4. **運行單元測試**
    ```bash
    pytest tests/test_scrapers.py tests/test_analysis.py -v
    ```
 
-4. **運行含覆蓋率的驗證**
+5. **運行含覆蓋率的驗證**
    ```bash
    pytest tests/test_scrapers.py tests/test_analysis.py -v --cov=src
    ```
 
-5. **提交分析核心**
+6. **提交 shortlist 報告功能**
    ```bash
    git add .
-   git commit -m "加入可重複使用的租屋條件分析核心"
+   git commit -m "加入人看的 shortlist 報告輸出"
    ```
 
 ### 在 Codex 中執行（推薦）
@@ -205,9 +213,10 @@ omx --madmax --high
 ## 💡 提示
 
 - 所有代碼已設置，邏輯就緒
-- 目前測試集共 35 個案例，已全數通過
+- 目前測試集共 40 個案例，已全數通過
 - 已產出第一份真實 CSV：`data/591_taipei_*.csv`
 - 已可產出條件分析 CSV：`data/*analysis*.csv`
+- 已可產出人看報告：`data/*shortlist*.md`
 - 列表頁抓取已可工作，但仍是單頁版與列表欄位版
 - 覆蓋率驗證已通過，總覆蓋率為 89%
 - 下一步最有價值的是 pagination + 詳頁補強 + 圖片評分

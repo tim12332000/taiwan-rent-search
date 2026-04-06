@@ -48,6 +48,10 @@ python -m src.main --county 台北市
 
 # 依條件分析 CSV 並輸出候選清單
 python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-kitchen-sink --top 5
+
+# 產出給人快速瀏覽的 shortlist 報告
+# 會同時輸出 analysis.csv + shortlist.md
+python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-kitchen-sink --top 10
 ```
 
 ## 進度
@@ -58,6 +62,7 @@ python -m src.analysis --destination-address "台北市信義區松仁路100號"
 - [x] 測試基礎建設與離線解析驗證
 - [x] 第一份 591 CSV 匯出
 - [x] 可重複使用的條件分析核心
+- [x] 人看得懂的 shortlist 報告
 - [ ] 圖片下載 & AI審核
 - [ ] 永慶/信義平台
 - [x] 數據存儲 (CSV)

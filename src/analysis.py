@@ -61,6 +61,14 @@ ANALYSIS_FIELDNAMES = [
 ]
 
 
+def score_band(score: float) -> str:
+    if score >= 90:
+        return "A"
+    if score >= 75:
+        return "B"
+    return "C"
+
+
 @dataclass
 class Coordinates:
     lat: float
@@ -397,6 +405,12 @@ def build_analysis_output_path(input_path: str | Path) -> Path:
     return Path("data") / f"{stem}_analysis_{timestamp}.csv"
 
 
+def build_report_output_path(input_path: str | Path) -> Path:
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    stem = Path(input_path).stem
+    return Path("data") / f"{stem}_shortlist_{timestamp}.md"
+
+
 def export_analysis_results(results: list[AnalysisResult], output_path: str | Path) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -427,6 +441,84 @@ def export_analysis_results(results: list[AnalysisResult], output_path: str | Pa
     return path
 
 
+def format_listing_line(result: AnalysisResult) -> str:
+    district = result.row.get("location_district", "未知區域")
+    area = result.row.get("location_area", "")
+    price = result.row.get("price", "?")
+    floor_area = result.row.get("floor_area", "") or "?"
+    commute = result.commute_best_minutes if result.commute_best_minutes is not None else "n/a"
+    kitchen = "已確認" if result.kitchen_sink_signal else "待確認" if result.needs_image_review else "無訊號"
+    band = score_band(result.score)
+    return (
+        f"**{band}級** | {district} | {area} | ${price}/月 | {floor_area}坪 | "
+        f"通勤 {commute} 分 | 流理臺 {kitchen}"
+    )
+
+
+def render_markdown_report(
+    results: list[AnalysisResult],
+    criteria: SearchCriteria,
+    input_path: str | Path,
+) -> str:
+    direct = [result for result in results if not result.needs_image_review]
+    review = [result for result in results if result.needs_image_review]
+
+    lines = [
+        "# 租屋快速瀏覽報告",
+        "",
+        f"- 來源資料: `{Path(input_path).name}`",
+        f"- 候選總數: `{len(results)}`",
+        f"- 目的地: `{criteria.destination_address or '未指定'}`",
+        f"- 通勤模式: `{criteria.transport_mode}`",
+        f"- 最長通勤: `{criteria.max_commute_minutes if criteria.max_commute_minutes is not None else '未限制'}`",
+        f"- 流理臺需求: `{'需要' if criteria.require_kitchen_sink else '未要求'}`",
+        "",
+        "## 直接看",
+    ]
+
+    if direct:
+        for idx, result in enumerate(direct, 1):
+            lines.extend(
+                [
+                    f"{idx}. {format_listing_line(result)}",
+                    f"   - {result.row.get('title', '')}",
+                    f"   - 原因: {'；'.join(result.matched_reasons)}",
+                    f"   - 連結: {result.row.get('url', '')}",
+                ]
+            )
+    else:
+        lines.append("目前沒有完全符合且已確認必要條件的物件。")
+
+    lines.extend(["", "## 待看圖確認"])
+    if review:
+        for idx, result in enumerate(review, 1):
+            lines.extend(
+                [
+                    f"{idx}. {format_listing_line(result)}",
+                    f"   - {result.row.get('title', '')}",
+                    f"   - 原因: {'；'.join(result.matched_reasons)}",
+                    f"   - 連結: {result.row.get('url', '')}",
+                ]
+            )
+    else:
+        lines.append("目前沒有需要額外看圖確認的物件。")
+
+    return "\n".join(lines) + "\n"
+
+
+def export_markdown_report(
+    results: list[AnalysisResult],
+    criteria: SearchCriteria,
+    input_path: str | Path,
+    output_path: str | Path,
+) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    report = render_markdown_report(results, criteria, input_path)
+    path.write_text(report, encoding="utf-8")
+    return path
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="分析租屋 CSV 並輸出候選排序")
     parser.add_argument("--input", help="來源 CSV 路徑，預設使用 data/ 最新 591 檔")
@@ -444,6 +536,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-commute", type=int, help="最長可接受通勤分鐘數")
     parser.add_argument("--transport-mode", choices=["either", "metro", "bike"], default="either")
     parser.add_argument("--top", type=int, default=10, help="輸出前幾筆")
+    parser.add_argument("--report-output", help="輸出 Markdown 報告路徑")
     return parser.parse_args()
 
 
@@ -470,9 +563,12 @@ def main() -> None:
     results = analyze_listings(input_path, criteria, geocoder=geocoder)
     top_results = results[: criteria.top_k]
     output_path = Path(args.output) if args.output else build_analysis_output_path(input_path)
+    report_path = Path(args.report_output) if args.report_output else build_report_output_path(input_path)
     export_analysis_results(top_results, output_path)
+    export_markdown_report(top_results, criteria, input_path, report_path)
 
     print(f"Analysis CSV: {output_path}")
+    print(f"Shortlist report: {report_path}")
     print(f"Matched listings: {len(results)}")
     for idx, result in enumerate(top_results, 1):
         print(

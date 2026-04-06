@@ -12,11 +12,16 @@ from src.analysis import (
     SearchCriteria,
     analyze_listings,
     build_analysis_output_path,
+    build_report_output_path,
     extract_district_from_text,
     export_analysis_results,
+    export_markdown_report,
+    format_listing_line,
     has_kitchen_sink_signal,
     latest_dataset_path,
+    render_markdown_report,
     resolve_destination,
+    score_band,
 )
 
 
@@ -165,6 +170,113 @@ def test_export_analysis_results_writes_expected_columns(tmp_path):
     assert rows[0]["kitchen_sink_signal"] == "yes"
 
 
+def test_score_band_maps_scores_to_bands():
+    assert score_band(95) == "A"
+    assert score_band(80) == "B"
+    assert score_band(60) == "C"
+
+
+def test_format_listing_line_contains_human_readable_summary():
+    result = AnalysisResult(
+        row={
+            "location_district": "信義區",
+            "location_area": "松仁路",
+            "price": "18000",
+            "floor_area": "12",
+        },
+        score=91.2,
+        commute_bike_minutes=8,
+        commute_metro_minutes=12,
+        commute_best_minutes=8,
+        kitchen_sink_signal=True,
+        needs_image_review=False,
+        matched_reasons=[],
+    )
+
+    line = format_listing_line(result)
+    assert "A級" in line
+    assert "信義區" in line
+    assert "通勤 8 分" in line
+    assert "流理臺 已確認" in line
+
+
+def test_render_markdown_report_groups_direct_and_review_items():
+    criteria = SearchCriteria(
+        destination_address="台北市信義區松仁路100號",
+        require_kitchen_sink=True,
+    )
+    direct = AnalysisResult(
+        row={
+            "title": "可開伙套房",
+            "url": "https://rent.591.com.tw/1",
+            "location_district": "信義區",
+            "location_area": "松仁路",
+            "price": "18000",
+            "floor_area": "12",
+        },
+        score=95,
+        commute_bike_minutes=8,
+        commute_metro_minutes=12,
+        commute_best_minutes=8,
+        kitchen_sink_signal=True,
+        needs_image_review=False,
+        matched_reasons=["estimated commute 8 min", "kitchen sink signal detected"],
+    )
+    review = AnalysisResult(
+        row={
+            "title": "待確認套房",
+            "url": "https://rent.591.com.tw/2",
+            "location_district": "大安區",
+            "location_area": "和平東路",
+            "price": "22000",
+            "floor_area": "10",
+        },
+        score=82,
+        commute_bike_minutes=15,
+        commute_metro_minutes=18,
+        commute_best_minutes=15,
+        kitchen_sink_signal=False,
+        needs_image_review=True,
+        matched_reasons=["estimated commute 15 min", "kitchen sink not confirmed"],
+    )
+
+    report = render_markdown_report([direct, review], criteria, "data/sample.csv")
+
+    assert "# 租屋快速瀏覽報告" in report
+    assert "## 直接看" in report
+    assert "## 待看圖確認" in report
+    assert "可開伙套房" in report
+    assert "待確認套房" in report
+
+
+def test_export_markdown_report_writes_file(tmp_path):
+    criteria = SearchCriteria(destination_address="台北市信義區松仁路100號")
+    result = AnalysisResult(
+        row={
+            "title": "可開伙套房",
+            "url": "https://rent.591.com.tw/1",
+            "location_district": "信義區",
+            "location_area": "松仁路",
+            "price": "18000",
+            "floor_area": "12",
+        },
+        score=95,
+        commute_bike_minutes=8,
+        commute_metro_minutes=12,
+        commute_best_minutes=8,
+        kitchen_sink_signal=True,
+        needs_image_review=False,
+        matched_reasons=["estimated commute 8 min"],
+    )
+    output = tmp_path / "shortlist.md"
+
+    export_markdown_report([result], criteria, "data/sample.csv", output)
+
+    text = output.read_text(encoding="utf-8")
+    assert "租屋快速瀏覽報告" in text
+    assert "可開伙套房" in text
+
+
 def test_resolve_destination_falls_back_to_district_center_when_geocode_missing():
     criteria = SearchCriteria(destination_address="台北市信義區松仁路100號")
 
@@ -183,6 +295,12 @@ def test_build_analysis_output_path_uses_input_stem():
     path = build_analysis_output_path("data/591_taipei_20260406_022332.csv")
     assert path.parent.name == "data"
     assert path.name.startswith("591_taipei_20260406_022332_analysis_")
+
+
+def test_build_report_output_path_uses_input_stem():
+    path = build_report_output_path("data/591_taipei_20260406_022332.csv")
+    assert path.parent.name == "data"
+    assert path.name.startswith("591_taipei_20260406_022332_shortlist_")
 
 
 def test_latest_dataset_path_picks_newest_file(tmp_path):

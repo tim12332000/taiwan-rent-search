@@ -43,3 +43,4 @@ venv.bak/
 .DS_Store
 data/downloads/
 data/*.csv
+data/*.md
