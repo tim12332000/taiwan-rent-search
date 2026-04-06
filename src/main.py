@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .models import HousingData
 from .scrapers.fang591 import Fang591Scraper
+from .scrapers.housefun import HousefunScraper
 from .scrapers.mixrent import MixRentScraper
 
 
@@ -126,6 +127,9 @@ def scrape_sources(
         elif source == "mixrent":
             with MixRentScraper(delay=delay) as scraper:
                 records.extend(scraper.scrape(county=county))
+        elif source == "housefun":
+            with HousefunScraper(delay=delay) as scraper:
+                records.extend(scraper.scrape(county=county))
         else:
             raise ValueError(f"Unsupported source: {source}")
     return dedupe_records(records)
@@ -148,7 +152,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--county", default="台北市", help="要抓取的縣市名稱")
     parser.add_argument("--output", help="輸出 CSV 路徑")
     parser.add_argument("--delay", type=float, default=2.0, help="請求延遲秒數")
-    parser.add_argument("--source", action="append", choices=["591", "mixrent"], help="抓取來源，可重複傳入")
+    parser.add_argument("--source", action="append", choices=["591", "mixrent", "housefun"], help="抓取來源，可重複傳入")
     return parser.parse_args()
 
 

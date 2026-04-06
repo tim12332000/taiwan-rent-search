@@ -573,6 +573,96 @@ class TestHousefunScraper:
         assert result["Status"] == "1"
         assert result["Data"]["HouseCount"] == "100"
 
+    def test_parse_item_extracts_core_fields(self):
+        scraper = HousefunScraper()
+        item = scraper._parse_html(
+            """
+            <article class="DataList both">
+              <div class="Data">
+                <h3 class="title"><a href="/rent/house/1986175/" title="復興路繁華店面">復興路繁華店面</a></h3>
+                <address class="addr">台北市信義區松仁路</address>
+                <span class="sectionList">
+                  <span class="level">1房(室)1廳1衛</span>
+                  <span class="pattern">樓層：1 / 4</span>
+                </span>
+              </div>
+              <div class="info">
+                <ul>
+                  <li class="InfoList"><span class="title">租金：</span><span class="infos num">30,000 元/月</span></li>
+                  <li class="InfoList"><span class="title">坪數：</span><span class="infos">22.69 坪</span></li>
+                  <li class="InfoList"><span class="infos">仲介(收費)：永慶房屋(股)公司中平榮富直營店</span></li>
+                </ul>
+              </div>
+              <span class="photoWrap"><span class="photo middleSet"><img src="https://img.housefun/1.jpg" /></span></span>
+            </article>
+            """
+        ).find("article", class_="DataList")
+
+        data = scraper._parse_item(item)
+
+        assert data is not None
+        assert data.id == "housefun-1986175"
+        assert data.platform == "housefun"
+        assert data.title == "復興路繁華店面"
+        assert data.price == 30000
+        assert data.location.county == "台北市"
+        assert data.location.district == "信義區"
+        assert data.location.area == "松仁路"
+        assert data.room_type == "1房"
+        assert data.bedrooms == 1
+        assert data.bathrooms == 1
+        assert data.floor_area == 22.69
+        assert data.floor == "1F/4F"
+        assert data.contact.name == "永慶房屋(股)公司中平榮富直營店"
+        assert data.images == ["https://img.housefun/1.jpg"]
+
+    def test_parse_item_rejects_non_taipei_listing(self):
+        scraper = HousefunScraper()
+        item = scraper._parse_html(
+            """
+            <article class="DataList both">
+              <div class="Data">
+                <h3 class="title"><a href="/rent/house/1986175/" title="新莊店面">新莊店面</a></h3>
+                <address class="addr">新北市新莊區復興路一段</address>
+              </div>
+            </article>
+            """
+        ).find("article", class_="DataList")
+
+        assert scraper._parse_item(item) is None
+
+    def test_scrape_parses_mocked_response(self, monkeypatch):
+        scraper = HousefunScraper()
+        fake_payload = {
+            "Status": "1",
+            "Data": {
+                "HouseCount": "2",
+                "PageCount": "1/1",
+                "SearchContent": """
+                    <article class=\"DataList both\">
+                      <div class=\"Data\">
+                        <h3 class=\"title\"><a href=\"/rent/house/1/\">信義區套房</a></h3>
+                        <address class=\"addr\">台北市信義區光復南路</address>
+                        <span class=\"sectionList\"><span class=\"level\">1房(室)1廳1衛</span><span class=\"pattern\">樓層：3 / 12</span></span>
+                      </div>
+                      <div class=\"info\"><ul><li class=\"InfoList\"><span class=\"title\">租金：</span><span class=\"infos num\">20,000 元/月</span></li><li class=\"InfoList\"><span class=\"title\">坪數：</span><span class=\"infos\">12 坪</span></li></ul></div>
+                    </article>
+                    <article class=\"DataList both\">
+                      <div class=\"Data\">
+                        <h3 class=\"title\"><a href=\"/rent/house/2/\">新莊套房</a></h3>
+                        <address class=\"addr\">新北市新莊區中正路</address>
+                      </div>
+                    </article>
+                """,
+            },
+        }
+
+        monkeypatch.setattr(scraper, "fetch_search_page", lambda county="台北市": fake_payload)
+        result = scraper.scrape("台北市")
+
+        assert len(result) == 1
+        assert result[0].location.district == "信義區"
+
 
 class TestCsvExport:
     """測試 CSV 匯出流程。"""

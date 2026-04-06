@@ -7,6 +7,7 @@ import csv
 import html
 import json
 import math
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -782,6 +783,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def safe_console_text(text: str) -> str:
+    """避免 Windows cp950 終端因 Unicode 字元中斷整個流程。"""
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        text.encode(encoding)
+        return text
+    except UnicodeEncodeError:
+        return text.encode(encoding, errors="replace").decode(encoding)
+
+
 def main() -> None:
     args = parse_args()
     input_path = Path(args.input) if args.input else latest_dataset_path()
@@ -811,18 +822,18 @@ def main() -> None:
     export_markdown_report(top_results, criteria, input_path, report_path)
     export_html_report(top_results, criteria, input_path, html_path)
 
-    print(f"Analysis CSV: {output_path}")
-    print(f"Shortlist report: {report_path}")
-    print(f"HTML report: {html_path}")
-    print(f"Matched listings: {len(results)}")
+    print(safe_console_text(f"Analysis CSV: {output_path}"))
+    print(safe_console_text(f"Shortlist report: {report_path}"))
+    print(safe_console_text(f"HTML report: {html_path}"))
+    print(safe_console_text(f"Matched listings: {len(results)}"))
     for idx, result in enumerate(top_results, 1):
-        print(
+        print(safe_console_text(
             f"{idx}. {result.row.get('title', '')} | "
             f"score={result.score} | "
             f"district={result.row.get('location_district', '')} | "
             f"price={result.row.get('price', '')} | "
             f"commute={result.commute_best_minutes if result.commute_best_minutes is not None else 'n/a'}"
-        )
+        ))
 
 
 if __name__ == "__main__":
