@@ -24,6 +24,7 @@ from src.main import (
     scrape_to_csv,
 )
 from src.scrapers.base import BaseScraper
+from src.scrapers.ddroom import DDRoomScraper
 from src.scrapers.fang591 import Fang591Scraper
 from src.scrapers.housefun import HousefunScraper
 from src.scrapers.mixrent import MixRentScraper
@@ -664,6 +665,119 @@ class TestHousefunScraper:
         assert result[0].location.district == "信義區"
 
 
+class TestDDRoomScraper:
+    """測試租租通 API 爬蟲。"""
+
+    def test_scraper_initialization(self):
+        scraper = DDRoomScraper()
+        assert scraper.name == "DDRoom"
+        assert scraper.delay == 1.5
+
+    def test_parse_item_extracts_core_fields(self):
+        scraper = DDRoomScraper()
+        item = {
+            "object_id": "abc123",
+            "title": "信義區可開伙套房",
+            "rent": 18000,
+            "type_space_name": "獨立套房",
+            "ping": 12,
+            "floor": 7,
+            "role": "individual",
+            "themes": ["可開伙", "租金補貼"],
+            "address": {
+                "city": "臺北市",
+                "area": "信義區",
+                "road": "松仁路",
+                "complete": "臺北市信義區松仁路",
+            },
+            "pattern": {
+                "bedroom": 1,
+                "bathroom": 1,
+            },
+            "covers": [
+                {"image": {"md": "https://static.dd-room.com/1.jpg"}},
+                {"image": {"md": "https://static.dd-room.com/2.jpg"}},
+            ],
+        }
+
+        data = scraper._parse_item(item)
+
+        assert data is not None
+        assert data.id == "ddroom-abc123"
+        assert data.platform == "ddroom"
+        assert data.title == "信義區可開伙套房"
+        assert data.price == 18000
+        assert data.location.county == "台北市"
+        assert data.location.district == "信義區"
+        assert data.location.area == "松仁路"
+        assert data.room_type == "獨立套房"
+        assert data.bedrooms == 1
+        assert data.bathrooms == 1
+        assert data.floor_area == 12.0
+        assert data.floor == "7F"
+        assert data.contact.name == "individual"
+        assert len(data.images) == 2
+
+    def test_parse_item_rejects_non_taipei_listing(self):
+        scraper = DDRoomScraper()
+        item = {
+            "object_id": "abc123",
+            "title": "桃園套房",
+            "rent": 12000,
+            "address": {
+                "city": "桃園市",
+                "area": "八德區",
+                "road": "富榮街",
+            },
+        }
+
+        assert scraper._parse_item(item) is None
+
+    def test_scrape_parses_mocked_response(self, monkeypatch):
+        scraper = DDRoomScraper()
+        payload = {
+            "data": {
+                "search": {
+                    "items": [
+                        {
+                            "object_id": "taipei1",
+                            "title": "台北好房",
+                            "rent": 20000,
+                            "type_space_name": "獨立套房",
+                            "ping": 10,
+                            "floor": 4,
+                            "role": "individual",
+                            "themes": ["可開伙"],
+                            "address": {"city": "臺北市", "area": "大安區", "road": "和平東路"},
+                            "pattern": {"bedroom": 1, "bathroom": 1},
+                            "covers": [],
+                        },
+                        {
+                            "object_id": "taoyuan1",
+                            "title": "桃園好房",
+                            "rent": 12000,
+                            "address": {"city": "桃園市", "area": "龜山區", "road": "文學路"},
+                        },
+                    ]
+                }
+            }
+        }
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return payload
+
+        monkeypatch.setattr(scraper, "_fetch_url", lambda *args, **kwargs: FakeResponse())
+
+        result = scraper.scrape(county="台北市")
+
+        assert len(result) == 1
+        assert result[0].location.district == "大安區"
+
+
 class TestCsvExport:
     """測試 CSV 匯出流程。"""
 
@@ -785,6 +899,49 @@ class TestCsvExport:
         deduped = dedupe_records(records + [duplicate])
 
         assert len(deduped) == 2
+
+    def test_dedupe_records_merges_cross_source_same_listing(self):
+        shared_title = "信義區電梯套房"
+        record_a = HousingData(
+            id="591-1",
+            platform="591",
+            title=shared_title,
+            price=20000,
+            location=Location(county="台北市", district="信義區", area="松仁路"),
+            room_type="套房",
+            bedrooms=1,
+            bathrooms=1,
+            floor_area=10.0,
+            floor=None,
+            contact=Contact(name="A"),
+            images=[],
+            description="a",
+            url="https://rent.591.com.tw/1",
+            scraped_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        record_b = HousingData(
+            id="mixrent-1",
+            platform="mixrent",
+            title=shared_title,
+            price=20000,
+            location=Location(county="台北市", district="信義區", area="松仁路"),
+            room_type="套房",
+            bedrooms=1,
+            bathrooms=1,
+            floor_area=10.0,
+            floor=None,
+            contact=Contact(name="B"),
+            images=[],
+            description="b",
+            url="https://mixrent.example/1",
+            scraped_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+
+        deduped = dedupe_records([record_a, record_b])
+
+        assert len(deduped) == 1
 
     def test_scrape_sources_to_csv_writes_combined_records(self, monkeypatch, tmp_path):
         mixrent_records = [self._sample_records()[0]]

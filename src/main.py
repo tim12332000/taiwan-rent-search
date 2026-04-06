@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .models import HousingData
+from .scrapers.ddroom import DDRoomScraper
 from .scrapers.fang591 import Fang591Scraper
 from .scrapers.housefun import HousefunScraper
 from .scrapers.mixrent import MixRentScraper
@@ -93,13 +94,20 @@ def build_multi_source_output_path(county: str, sources: list[str]) -> Path:
 
 
 def dedupe_records(records: list[HousingData]) -> list[HousingData]:
-    seen: set[tuple[str, str, int]] = set()
+    seen_urls: set[tuple[str, str, int]] = set()
+    seen_fingerprints: set[tuple[str, str, int]] = set()
     deduped: list[HousingData] = []
     for record in records:
-        key = (record.url.strip(), record.title.strip(), record.price)
-        if key in seen:
+        url_key = (record.url.strip(), record.title.strip(), record.price)
+        fingerprint = (
+            record.title.strip(),
+            record.location.district.strip(),
+            record.price,
+        )
+        if url_key in seen_urls or fingerprint in seen_fingerprints:
             continue
-        seen.add(key)
+        seen_urls.add(url_key)
+        seen_fingerprints.add(fingerprint)
         deduped.append(record)
     return deduped
 
@@ -130,6 +138,9 @@ def scrape_sources(
         elif source == "housefun":
             with HousefunScraper(delay=delay) as scraper:
                 records.extend(scraper.scrape(county=county))
+        elif source == "ddroom":
+            with DDRoomScraper(delay=delay) as scraper:
+                records.extend(scraper.scrape(county=county))
         else:
             raise ValueError(f"Unsupported source: {source}")
     return dedupe_records(records)
@@ -152,7 +163,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--county", default="台北市", help="要抓取的縣市名稱")
     parser.add_argument("--output", help="輸出 CSV 路徑")
     parser.add_argument("--delay", type=float, default=2.0, help="請求延遲秒數")
-    parser.add_argument("--source", action="append", choices=["591", "mixrent", "housefun"], help="抓取來源，可重複傳入")
+    parser.add_argument("--source", action="append", choices=["591", "mixrent", "housefun", "ddroom"], help="抓取來源，可重複傳入")
     return parser.parse_args()
 
 

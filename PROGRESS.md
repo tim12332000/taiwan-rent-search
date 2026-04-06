@@ -49,6 +49,12 @@
   - 已可取得並解析官方 `SearchContent`
   - 已可過濾出台北市結果
 
+- [x] **租租通 API 爬蟲** (`src/scrapers/ddroom.py`)
+  - 已打通 `https://api.dd-room.com/api/v1/search`
+  - 已可解析 `search.items`
+  - 已可過濾出台北市結果
+  - 已保留主圖與主題標籤
+
 - [x] **研究文檔** (`docs/research.md`)
   - 5個主流平台結構分析
   - 爬蟲難度評分
@@ -70,7 +76,7 @@
 
 ### 測試代碼
 - [x] 創建 `tests/test_scrapers.py`
-- [x] 58個測試用例
+- [x] 63個測試用例
   - 數據模型測試
   - 爬蟲類初始化
   - User-Agent 輪換
@@ -82,6 +88,7 @@
   - 多來源去重與整合輸出
   - Housefun gateway 編解碼驗證
   - Housefun 結果解析與台北過濾驗證
+  - DDRoom API 結構解析
   - CSV 匯出與 CLI 入口驗證
   - 條件分析與通勤估算驗證
   - Markdown shortlist 報告驗證
@@ -101,10 +108,11 @@
 9. ✅ **圖文穿插報告已完成** - 已可直接產出 `shortlist.html`
 10. ✅ **多來源整合已完成** - 已可合併 `591 + MixRent` 並輸出整合資料池
 11. ✅ **Housefun 已正式接入** - 已可納入三來源整合資料池
+12. ✅ **DDRoom 已正式接入** - 已可納入四來源整合資料池
 
 ### 目前缺口
-1. ⏳ **只有單頁資料** - `591`、`MixRent`、`Housefun` 尚未做 pagination
-2. ⏳ **來源數仍偏少** - `租租通`、`樂屋網` 還沒接
+1. ⏳ **只有單頁資料** - `591`、`MixRent`、`Housefun`、`DDRoom` 尚未做 pagination
+2. ⏳ **來源數仍偏少** - `樂屋網` 等來源還沒接
 3. ⏳ **欄位仍以列表頁為主** - `bathrooms`、`contact`、`floor` 等資訊仍多半缺失或推估
 4. ⏳ **缺少資料品質統計** - 尚未輸出 skipped rows、重複筆數、欄位完整率
 5. ⏳ **缺少 detail-page enrichment** - 需要第二階段補詳頁資料
@@ -119,7 +127,7 @@
 ### 立即執行
 1. **重新產出一份資料檔**
    ```bash
-   python -m src.main --county 台北市 --source 591 --source mixrent --source housefun
+   python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom
    ```
 
 2. **依條件輸出候選清單**
@@ -147,10 +155,10 @@
    pytest tests/test_scrapers.py tests/test_analysis.py -v --cov=src
    ```
 
-7. **提交三來源整合功能**
+7. **提交四來源整合功能**
    ```bash
    git add .
-   git commit -m "加入 Housefun 爬蟲與三來源整合輸出"
+   git commit -m "加入 DDRoom 爬蟲與四來源整合輸出"
    ```
 
 ### 在 Codex 中執行（推薦）
@@ -202,7 +210,8 @@ taiwan-rent-search/
 │       ├── base.py            ✅ 完成
 │       ├── fang591.py         ✅ 完成
 │       ├── mixrent.py         ✅ 完成
-│       └── housefun.py        ✅ 完成
+│       ├── housefun.py        ✅ 完成
+│       └── ddroom.py          ✅ 完成
 ├── tests/
 │   ├── __init__.py
 │   └── test_scrapers.py       ✅ 完成（已驗證）
@@ -246,16 +255,17 @@ omx --madmax --high
 
 - 所有代碼已設置，邏輯就緒
 - 目前測試集共 40 個案例，已全數通過
-- 目前測試集共 58 個案例，已全數通過
+- 目前測試集共 63 個案例，已全數通過
 - 已產出第一份真實 CSV：`data/591_taipei_*.csv`
 - 已產出第一份多來源整合 CSV：`data/591-mixrent_taipei_*.csv`
 - 已產出第一份三來源整合 CSV：`data/591-housefun-mixrent_taipei_*.csv`
+- 已產出第一份四來源整合 CSV：`data/591-ddroom-housefun-mixrent_taipei_*.csv`
 - 已可產出條件分析 CSV：`data/*analysis*.csv`
 - 已可產出人看報告：`data/*shortlist*.md`
 - 已可產出圖文報告：`data/*shortlist*.html`
 - 列表頁抓取已可工作，但仍是單頁版與列表欄位版
 - 覆蓋率驗證已通過，總覆蓋率為 85%
-- 下一步最有價值的是第 4 個來源 + pagination + 詳頁補強
+- 下一步最有價值的是第 5 個來源 + pagination + 詳頁補強
 
 ---
 
