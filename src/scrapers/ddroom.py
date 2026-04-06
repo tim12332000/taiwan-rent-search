@@ -20,23 +20,37 @@ class DDRoomScraper(BaseScraper):
     def __init__(self, delay: float = 1.5):
         super().__init__(name="DDRoom", delay=delay)
 
-    def scrape(self, county: str = "台北市", district: str = "", keyword: str = "", **kwargs) -> List[HousingData]:
+    def scrape(
+        self,
+        county: str = "台北市",
+        district: str = "",
+        keyword: str = "",
+        max_pages: int = 3,
+        **kwargs,
+    ) -> List[HousingData]:
         search_keyword = keyword or f"{county}{district}".strip() or county
-        params = {
-            "category": "house",
-            "keyword": search_keyword,
-        }
         logger.info("開始爬取 DDRoom - %s", search_keyword)
 
         try:
-            response = self._fetch_url(self.API_URL, params=params)
-            payload = response.json()
-            items = payload.get("data", {}).get("search", {}).get("items", [])
             listings = []
-            for item in items:
-                listing = self._parse_item(item)
-                if listing:
-                    listings.append(listing)
+            page = 1
+            last_page = 1
+            while page <= min(last_page, max_pages):
+                params = {
+                    "category": "house",
+                    "keyword": search_keyword,
+                    "page": page,
+                }
+                response = self._fetch_url(self.API_URL, params=params)
+                payload = response.json()
+                search = payload.get("data", {}).get("search", {})
+                last_page = int(search.get("last_page") or 1)
+                items = search.get("items", [])
+                for item in items:
+                    listing = self._parse_item(item)
+                    if listing:
+                        listings.append(listing)
+                page += 1
             logger.info("✓ 成功爬取 DDRoom %s 筆台北房源", len(listings))
             return listings
         except Exception as exc:

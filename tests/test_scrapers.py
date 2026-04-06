@@ -735,47 +735,83 @@ class TestDDRoomScraper:
 
     def test_scrape_parses_mocked_response(self, monkeypatch):
         scraper = DDRoomScraper()
-        payload = {
-            "data": {
-                "search": {
-                    "items": [
-                        {
-                            "object_id": "taipei1",
-                            "title": "台北好房",
-                            "rent": 20000,
-                            "type_space_name": "獨立套房",
-                            "ping": 10,
-                            "floor": 4,
-                            "role": "individual",
-                            "themes": ["可開伙"],
-                            "address": {"city": "臺北市", "area": "大安區", "road": "和平東路"},
-                            "pattern": {"bedroom": 1, "bathroom": 1},
-                            "covers": [],
-                        },
-                        {
-                            "object_id": "taoyuan1",
-                            "title": "桃園好房",
-                            "rent": 12000,
-                            "address": {"city": "桃園市", "area": "龜山區", "road": "文學路"},
-                        },
-                    ]
+        payloads = [
+            {
+                "data": {
+                    "search": {
+                        "last_page": 2,
+                        "items": [
+                            {
+                                "object_id": "taipei1",
+                                "title": "台北好房",
+                                "rent": 20000,
+                                "type_space_name": "獨立套房",
+                                "ping": 10,
+                                "floor": 4,
+                                "role": "individual",
+                                "themes": ["可開伙"],
+                                "address": {"city": "臺北市", "area": "大安區", "road": "和平東路"},
+                                "pattern": {"bedroom": 1, "bathroom": 1},
+                                "covers": [],
+                            },
+                            {
+                                "object_id": "taoyuan1",
+                                "title": "桃園好房",
+                                "rent": 12000,
+                                "address": {"city": "桃園市", "area": "龜山區", "road": "文學路"},
+                            },
+                        ],
+                    }
                 }
-            }
-        }
+            },
+            {
+                "data": {
+                    "search": {
+                        "last_page": 2,
+                        "items": [
+                            {
+                                "object_id": "taipei2",
+                                "title": "第二頁台北好房",
+                                "rent": 22000,
+                                "type_space_name": "獨立套房",
+                                "ping": 12,
+                                "floor": 7,
+                                "role": "individual",
+                                "themes": [],
+                                "address": {"city": "台北市", "area": "信義區", "road": "松仁路"},
+                                "pattern": {"bedroom": 1, "bathroom": 1},
+                                "covers": [],
+                            }
+                        ],
+                    }
+                }
+            },
+        ]
 
         class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
             def raise_for_status(self):
                 return None
 
             def json(self):
-                return payload
+                return self.payload
 
-        monkeypatch.setattr(scraper, "_fetch_url", lambda *args, **kwargs: FakeResponse())
+        calls = {"index": 0}
+
+        def fake_fetch(*args, **kwargs):
+            payload = payloads[calls["index"]]
+            calls["index"] += 1
+            return FakeResponse(payload)
+
+        monkeypatch.setattr(scraper, "_fetch_url", fake_fetch)
 
         result = scraper.scrape(county="台北市")
 
-        assert len(result) == 1
+        assert len(result) == 2
         assert result[0].location.district == "大安區"
+        assert result[1].location.district == "信義區"
 
 
 class TestCsvExport:

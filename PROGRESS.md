@@ -54,6 +54,7 @@
   - 已可解析 `search.items`
   - 已可過濾出台北市結果
   - 已保留主圖與主題標籤
+  - 已支援多頁抓取（目前預設 3 頁）
 
 - [x] **研究文檔** (`docs/research.md`)
   - 5個主流平台結構分析
@@ -111,7 +112,7 @@
 12. ✅ **DDRoom 已正式接入** - 已可納入四來源整合資料池
 
 ### 目前缺口
-1. ⏳ **只有單頁資料** - `591`、`MixRent`、`Housefun`、`DDRoom` 尚未做 pagination
+1. ⏳ **大多仍是單頁資料** - `591`、`MixRent`、`Housefun` 尚未做 pagination，`DDRoom` 已支援多頁
 2. ⏳ **來源數仍偏少** - `樂屋網` 等來源還沒接
 3. ⏳ **欄位仍以列表頁為主** - `bathrooms`、`contact`、`floor` 等資訊仍多半缺失或推估
 4. ⏳ **缺少資料品質統計** - 尚未輸出 skipped rows、重複筆數、欄位完整率
@@ -260,6 +261,7 @@ omx --madmax --high
 - 已產出第一份多來源整合 CSV：`data/591-mixrent_taipei_*.csv`
 - 已產出第一份三來源整合 CSV：`data/591-housefun-mixrent_taipei_*.csv`
 - 已產出第一份四來源整合 CSV：`data/591-ddroom-housefun-mixrent_taipei_*.csv`
+- 最新四來源整合資料池約 `45` 筆
 - 已可產出條件分析 CSV：`data/*analysis*.csv`
 - 已可產出人看報告：`data/*shortlist*.md`
 - 已可產出圖文報告：`data/*shortlist*.html`
