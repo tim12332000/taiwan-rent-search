@@ -78,7 +78,15 @@ python -m src.analysis --destination-address "台北市信義區松仁路100號 
 
 # 產出本地即時搜尋網站
 python -m src.webapp --input data\\591-ddroom-housefun-mixrent_taipei_20260406_233623.csv
+
+# 用最新資料集更新固定入口並直接打開瀏覽器
+python -m src.webapp --open
+
+# Windows 一鍵開啟
+.\open_search_app.ps1
 ```
+
+固定入口檔案是 `data/search_app.html`。每次執行 `python -m src.webapp` 時，都會同步更新這個檔案，所以之後不用再記每次產生的時間戳 HTML。
 
 ## 進度
 

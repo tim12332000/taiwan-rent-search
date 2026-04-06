@@ -6,6 +6,7 @@ import csv
 from pathlib import Path
 
 from src.webapp import (
+    build_default_search_app_path,
     build_search_app_output_path,
     export_search_app,
     listing_to_view_model,
@@ -73,6 +74,7 @@ def test_listing_to_view_model_extracts_cover_and_search_text():
         "platform": "591",
         "title": "可開伙套房",
         "price": "18000",
+        "location_county": "台北市",
         "location_district": "信義區",
         "location_area": "松仁路",
         "floor_area": "12",
@@ -91,9 +93,16 @@ def test_listing_to_view_model_extracts_cover_and_search_text():
     model = listing_to_view_model(row)
 
     assert model["cover"] == "https://img/1.jpg"
+    assert model["address"] == "台北市信義區松仁路"
+    assert model["district_center_lat"] == 25.0332
+    assert model["district_center_lon"] == 121.566
+    assert model["nearest_metro_station"] == "台北101/世貿"
+    assert model["nearest_metro_walk_minutes"] == 5
     assert model["kitchen_sink_signal"] is True
+    assert "台北市" in model["search_text"]
     assert "信義區" in model["search_text"]
     assert "最短租期一年" in model["search_text"]
+    assert "台北市信義區松仁路" in model["search_text_compact"]
 
 
 def test_prepare_listing_view_models_reads_csv(tmp_path):
@@ -119,12 +128,26 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "const listings =" in html_text
     assert "可開伙套房" in html_text
     assert "最短租期" in html_text
+    assert "完整地址" in html_text
+    assert "通勤目的地" in html_text
+    assert "normalizeSearchText" in html_text
+    assert "buildAddressNeedles" in html_text
+    assert "search_text_compact" in html_text
+    assert "getCommuteEstimate" in html_text
+    assert "估通勤" in html_text
+    assert "最近捷運" in html_text
 
 
 def test_build_search_app_output_path_uses_input_stem():
     path = build_search_app_output_path("data/sample.csv")
     assert path.parent.name == "data"
     assert path.name == "sample_search_app.html"
+
+
+def test_build_default_search_app_path_is_stable():
+    path = build_default_search_app_path()
+    assert path.parent.name == "data"
+    assert path.name == "search_app.html"
 
 
 def test_export_search_app_writes_html(tmp_path):
@@ -136,5 +159,21 @@ def test_export_search_app_writes_html(tmp_path):
 
     assert path == output
     text = output.read_text(encoding="utf-8")
+    assert "<!doctype html>" in text.lower()
+    assert "可開伙套房" in text
+
+
+def test_export_search_app_also_updates_stable_entry(tmp_path, monkeypatch):
+    csv_path = tmp_path / "sample.csv"
+    write_sample_csv(csv_path)
+    output = tmp_path / "search.html"
+    stable = tmp_path / "stable" / "search_app.html"
+
+    monkeypatch.setattr("src.webapp.DEFAULT_SEARCH_APP_PATH", stable)
+
+    export_search_app(csv_path, output)
+
+    assert stable.exists()
+    text = stable.read_text(encoding="utf-8")
     assert "<!doctype html>" in text.lower()
     assert "可開伙套房" in text

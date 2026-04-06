@@ -5,14 +5,21 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import webbrowser
 from pathlib import Path
 
 from .analysis import (
+    TAIPEI_DISTRICT_CENTERS,
+    district_center,
     has_kitchen_sink_signal,
     latest_dataset_path,
     load_listings,
     parse_images,
 )
+from .taipei_metro import find_nearest_station
+
+
+DEFAULT_SEARCH_APP_PATH = Path("data") / "search_app.html"
 
 
 def build_search_app_output_path(input_path: str | Path) -> Path:
@@ -20,15 +27,60 @@ def build_search_app_output_path(input_path: str | Path) -> Path:
     return Path("data") / f"{stem}_search_app.html"
 
 
+def build_default_search_app_path() -> Path:
+    return DEFAULT_SEARCH_APP_PATH
+
+
+def normalize_search_text(text: str | None) -> str:
+    return "".join((text or "").replace("臺", "台").lower().split())
+
+
+def build_listing_address(row: dict[str, str]) -> str:
+    return "".join(
+        part for part in [
+            row.get("location_county", ""),
+            row.get("location_district", ""),
+            row.get("location_area", ""),
+        ] if part
+    )
+
+
 def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
     images = parse_images(row.get("images"))
+    address = build_listing_address(row)
+    center = district_center(row.get("location_district", ""))
+    nearest_station = find_nearest_station(center.lat if center else None, center.lon if center else None)
+    search_text = " ".join(
+        part for part in [
+            row.get("platform", ""),
+            row.get("title", ""),
+            row.get("location_county", ""),
+            row.get("location_district", ""),
+            row.get("location_area", ""),
+            address,
+            row.get("room_type", ""),
+            row.get("description", ""),
+            row.get("detail_shortest_lease", ""),
+            row.get("detail_rules", ""),
+            row.get("detail_management_fee", ""),
+            row.get("detail_deposit", ""),
+            row.get("detail_facilities", ""),
+        ] if part
+    ).lower()
     return {
         "id": row.get("id", ""),
         "platform": row.get("platform", ""),
         "title": row.get("title", ""),
         "price": int(float(row.get("price") or 0)),
+        "county": row.get("location_county", ""),
         "district": row.get("location_district", ""),
         "area": row.get("location_area", ""),
+        "address": address,
+        "district_center_lat": center.lat if center else None,
+        "district_center_lon": center.lon if center else None,
+        "nearest_metro_station": nearest_station["name"] if nearest_station else "",
+        "nearest_metro_distance_km": nearest_station["distance_km"] if nearest_station else None,
+        "nearest_metro_walk_minutes": nearest_station["walk_minutes"] if nearest_station else None,
         "floor_area": float(row.get("floor_area")) if row.get("floor_area") else None,
         "room_type": row.get("room_type", ""),
         "description": row.get("description", ""),
@@ -42,21 +94,8 @@ def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
         "detail_deposit": row.get("detail_deposit", ""),
         "detail_management_fee": row.get("detail_management_fee", ""),
         "detail_facilities": row.get("detail_facilities", ""),
-        "search_text": " ".join(
-            part for part in [
-                row.get("platform", ""),
-                row.get("title", ""),
-                row.get("location_district", ""),
-                row.get("location_area", ""),
-                row.get("room_type", ""),
-                row.get("description", ""),
-                row.get("detail_shortest_lease", ""),
-                row.get("detail_rules", ""),
-                row.get("detail_management_fee", ""),
-                row.get("detail_deposit", ""),
-                row.get("detail_facilities", ""),
-            ] if part
-        ).lower(),
+        "search_text": search_text,
+        "search_text_compact": normalize_search_text(search_text),
     }
 
 
@@ -68,6 +107,7 @@ def prepare_listing_view_models(input_path: str | Path) -> list[dict[str, object
 def render_search_app_html(input_path: str | Path, listings: list[dict[str, object]]) -> str:
     source_name = html.escape(Path(input_path).name)
     listings_json = json.dumps(listings, ensure_ascii=False)
+    district_centers_json = json.dumps(TAIPEI_DISTRICT_CENTERS, ensure_ascii=False)
     return f"""<!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -322,7 +362,11 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         <h2>篩選條件</h2>
         <div class="field">
           <label for="q">搜尋</label>
-          <input id="q" type="search" placeholder="輸入關鍵字、路名、捷運、物件特點…" />
+          <input id="q" type="search" placeholder="輸入完整地址、路名、捷運、物件特點…" />
+        </div>
+        <div class="field">
+          <label for="destination">通勤目的地</label>
+          <input id="destination" type="search" placeholder="輸入上班地點；留空時會自動嘗試用上面的地址搜尋" />
         </div>
         <div class="field">
           <label for="district">行政區</label>
@@ -378,8 +422,10 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
 
   <script>
     const listings = {listings_json};
+    const districtCenters = {district_centers_json};
     const els = {{
       q: document.getElementById('q'),
+      destination: document.getElementById('destination'),
       district: document.getElementById('district'),
       platform: document.getElementById('platform'),
       maxPrice: document.getElementById('max-price'),
@@ -396,6 +442,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     }};
 
     const uniqueValues = (key) => [...new Set(listings.map(item => item[key]).filter(Boolean))].sort();
+    const districts = uniqueValues('district');
 
     function fillSelect(select, values) {{
       const baseOption = select.querySelector('option');
@@ -414,12 +461,131 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       return new Intl.NumberFormat('zh-TW').format(Number(value));
     }}
 
+    function normalizeSearchText(value) {{
+      return (value || '')
+        .replaceAll('臺', '台')
+        .toLowerCase()
+        .replace(/\\s+/g, '');
+    }}
+
+    function buildAddressNeedles(query) {{
+      const normalized = normalizeSearchText(query);
+      if (!normalized) return [];
+
+      const needles = new Set([normalized]);
+      let trimmed = normalized;
+      const tailPatterns = [
+        /(?:[bB]\\d+|\\d+[fF])$/,
+        /\\d+樓$/,
+        /\\d+室$/,
+        /(?:之\\d+)?\\d+號(?:之\\d+)?$/,
+      ];
+
+      let changed = true;
+      while (changed) {{
+        changed = false;
+        for (const pattern of tailPatterns) {{
+          if (!pattern.test(trimmed)) continue;
+          trimmed = trimmed.replace(pattern, '');
+          if (trimmed) needles.add(trimmed);
+          changed = true;
+          break;
+        }}
+      }}
+
+      const district = districts.find(value => {{
+        const compactDistrict = normalizeSearchText(value);
+        return compactDistrict && normalized.includes(compactDistrict);
+      }});
+      if (district) {{
+        needles.add(normalizeSearchText(district));
+      }}
+
+      return [...needles].filter(Boolean);
+    }}
+
+    function matchesQuery(item, query) {{
+      const rawQuery = (query || '').trim();
+      if (!rawQuery) return true;
+
+      const loweredQuery = rawQuery.toLowerCase();
+      if (item.search_text.includes(loweredQuery)) return true;
+
+      return buildAddressNeedles(rawQuery).some(needle => item.search_text_compact.includes(needle));
+    }}
+
+    function haversineKm(origin, destination) {{
+      const toRadians = degrees => degrees * Math.PI / 180;
+      const radius = 6371;
+      const dLat = toRadians(destination.lat - origin.lat);
+      const dLon = toRadians(destination.lon - origin.lon);
+      const lat1 = toRadians(origin.lat);
+      const lat2 = toRadians(destination.lat);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }}
+
+    function estimateBikeMinutes(distanceKm) {{
+      return Math.ceil(distanceKm * 4.2 + 4);
+    }}
+
+    function estimateMetroMinutes(distanceKm) {{
+      return Math.ceil(distanceKm * 2.3 + 12);
+    }}
+
+    function extractDistrictFromText(value) {{
+      const text = value || '';
+      return Object.keys(districtCenters).find(name => text.includes(name)) || '';
+    }}
+
+    function getDestinationQuery() {{
+      const explicitDestination = (els.destination.value || '').trim();
+      if (explicitDestination) return explicitDestination;
+
+      const searchQuery = (els.q.value || '').trim();
+      return extractDistrictFromText(searchQuery) ? searchQuery : '';
+    }}
+
+    function resolveDestination(value) {{
+      const district = extractDistrictFromText(value);
+      if (!district || !districtCenters[district]) return null;
+      const [lat, lon] = districtCenters[district];
+      return {{ district, lat, lon }};
+    }}
+
+    function getCommuteEstimate(item, destination) {{
+      if (!destination) return null;
+      if (item.district_center_lat === null || item.district_center_lon === null) return null;
+
+      const origin = {{
+        lat: item.district_center_lat,
+        lon: item.district_center_lon,
+      }};
+      const distanceKm = haversineKm(origin, destination);
+      const bikeMinutes = estimateBikeMinutes(distanceKm);
+      const metroMinutes = estimateMetroMinutes(distanceKm);
+      return {{
+        bikeMinutes,
+        metroMinutes,
+        bestMinutes: Math.min(bikeMinutes, metroMinutes),
+        destinationDistrict: destination.district,
+      }};
+    }}
+
     function card(item) {{
       const image = item.cover
         ? `<img src="${{item.cover}}" alt="${{item.title}}" loading="lazy">`
         : `<div class="placeholder">無圖片</div>`;
       const kitchen = item.kitchen_sink_signal ? '有流理臺訊號' : '待確認';
       const floorArea = item.floor_area ? `${{item.floor_area}}坪` : '坪數待補';
+      const commute = item.commute
+        ? `估通勤 ${{item.commute.bestMinutes}} 分鐘 · 單車 ${{item.commute.bikeMinutes}} / 捷運 ${{item.commute.metroMinutes}}`
+        : '未設定通勤目的地';
+      const metroStation = item.nearest_metro_station
+        ? `最近捷運：${{item.nearest_metro_station}}站 · 步行約 ${{item.nearest_metro_walk_minutes}} 分鐘`
+        : '最近捷運：待補';
       const details = [
         item.detail_shortest_lease ? `最短租期：${{item.detail_shortest_lease}}` : '',
         item.detail_deposit ? `押金：${{item.detail_deposit}}` : '',
@@ -438,6 +604,8 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
             </div>
             <h3 class="title">${{item.title}}</h3>
             <div class="meta">${{formatNumber(item.price)}} 元 / 月 · ${{floorArea}} · ${{item.area || '路段待補'}}</div>
+            <div class="meta-sub">${{commute}}</div>
+            <div class="meta-sub">${{metroStation}}</div>
             <div class="meta-sub">${{details || '細節待補'}}</div>
             <div class="desc">${{item.description || '目前沒有額外描述。'}}</div>
             ${{rules}}
@@ -449,7 +617,8 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     }}
 
     function applyFilters() {{
-      const q = els.q.value.trim().toLowerCase();
+      const q = els.q.value;
+      const destination = resolveDestination(getDestinationQuery());
       const district = els.district.value;
       const platform = els.platform.value;
       const maxPrice = Number(els.maxPrice.value || 0);
@@ -458,8 +627,11 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const hasImages = els.hasImages.checked;
       const sortBy = els.sortBy.value;
 
-      let filtered = listings.filter(item => {{
-        if (q && !item.search_text.includes(q)) return false;
+      let filtered = listings.map(item => ({{
+        ...item,
+        commute: getCommuteEstimate(item, destination),
+      }})).filter(item => {{
+        if (!matchesQuery(item, q)) return false;
         if (district && item.district !== district) return false;
         if (platform && item.platform !== platform) return false;
         if (maxPrice && item.price > maxPrice) return false;
@@ -470,9 +642,12 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       }});
 
       filtered.sort((a, b) => {{
+        if (sortBy === 'updated-desc') return (b.updated_at || '').localeCompare(a.updated_at || '');
+        if (destination && a.commute && b.commute && a.commute.bestMinutes !== b.commute.bestMinutes) {{
+          return a.commute.bestMinutes - b.commute.bestMinutes;
+        }}
         if (sortBy === 'price-desc') return b.price - a.price;
         if (sortBy === 'area-desc') return (b.floor_area || 0) - (a.floor_area || 0);
-        if (sortBy === 'updated-desc') return (b.updated_at || '').localeCompare(a.updated_at || '');
         return a.price - b.price;
       }});
 
@@ -487,7 +662,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
 
     fillSelect(els.district, uniqueValues('district'));
     fillSelect(els.platform, uniqueValues('platform'));
-    [els.q, els.district, els.platform, els.maxPrice, els.minArea, els.kitchenOnly, els.hasImages, els.sortBy]
+    [els.q, els.destination, els.district, els.platform, els.maxPrice, els.minArea, els.kitchenOnly, els.hasImages, els.sortBy]
       .forEach(el => el.addEventListener('input', applyFilters));
     applyFilters();
   </script>
@@ -500,7 +675,13 @@ def export_search_app(input_path: str | Path, output_path: str | Path | None = N
     listings = prepare_listing_view_models(input_path)
     target = Path(output_path) if output_path else build_search_app_output_path(input_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(render_search_app_html(input_path, listings), encoding="utf-8")
+    html_text = render_search_app_html(input_path, listings)
+    target.write_text(html_text, encoding="utf-8")
+
+    stable_target = build_default_search_app_path()
+    stable_target.parent.mkdir(parents=True, exist_ok=True)
+    if stable_target != target:
+        stable_target.write_text(html_text, encoding="utf-8")
     return target
 
 
@@ -508,6 +689,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="產生本地即時搜尋租屋頁面")
     parser.add_argument("--input", help="來源 CSV 路徑，預設使用最新資料集")
     parser.add_argument("--output", help="輸出 HTML 路徑")
+    parser.add_argument("--open", action="store_true", help="產出後直接用瀏覽器開啟固定入口")
     return parser.parse_args()
 
 
@@ -515,7 +697,11 @@ def main() -> None:
     args = parse_args()
     input_path = Path(args.input) if args.input else latest_dataset_path()
     output_path = export_search_app(input_path, args.output)
+    stable_path = build_default_search_app_path()
+    if args.open:
+        webbrowser.open(stable_path.resolve().as_uri())
     print(f"Search app: {output_path}")
+    print(f"Stable entry: {stable_path}")
     print(f"Source dataset: {input_path}")
 
 

@@ -430,3 +430,14 @@ def test_latest_dataset_path_picks_newest_file(tmp_path):
     newer.touch()
 
     assert latest_dataset_path(tmp_path) == newer
+
+
+def test_latest_dataset_path_skips_analysis_outputs(tmp_path):
+    source = tmp_path / "591-ddroom-housefun-mixrent_taipei_20260407_003704.csv"
+    analysis = tmp_path / "591-ddroom-housefun-mixrent_taipei_20260407_003704_analysis_20260407_004000.csv"
+    source.write_text("x", encoding="utf-8")
+    analysis.write_text("x", encoding="utf-8")
+    source.touch()
+    analysis.touch()
+
+    assert latest_dataset_path(tmp_path) == source

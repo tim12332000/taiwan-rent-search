@@ -171,8 +171,11 @@ class NominatimGeocoder:
 
 
 def latest_dataset_path(data_dir: str | Path = "data") -> Path:
+    def is_source_dataset(path: Path) -> bool:
+        return path.suffix == ".csv" and "_analysis_" not in path.stem
+
     datasets = sorted(
-        Path(data_dir).glob("591_*.csv"),
+        (path for path in Path(data_dir).glob("*.csv") if is_source_dataset(path)),
         key=lambda path: (path.stat().st_mtime_ns, path.name),
         reverse=True,
     )
