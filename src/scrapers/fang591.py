@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List
 import logging
 from urllib.parse import urlencode
+from dataclasses import replace
 
 from .base import BaseScraper
 from ..models import HousingData, Location, Contact
@@ -28,7 +29,15 @@ class Fang591Scraper(BaseScraper):
     def __init__(self, delay: float = 2.0):
         super().__init__(name="591房屋", delay=delay)
 
-    def scrape(self, county: str = "", district: str = "", max_pages: int = 1, **kwargs) -> List[HousingData]:
+    def scrape(
+        self,
+        county: str = "",
+        district: str = "",
+        max_pages: int = 1,
+        enrich_details: bool = False,
+        detail_limit: int = 10,
+        **kwargs,
+    ) -> List[HousingData]:
         """
         爬取591房屋數據
         
@@ -67,6 +76,9 @@ class Fang591Scraper(BaseScraper):
                         logger.warning(f"解析房源失敗: {e}")
                         continue
             
+            if enrich_details and housing_list:
+                housing_list = self.enrich_listings(housing_list, limit=detail_limit)
+
             logger.info(f"✓ 成功爬取 {len(housing_list)} 筆房源")
             return housing_list
             
@@ -196,6 +208,147 @@ class Fang591Scraper(BaseScraper):
             if candidate not in images:
                 images.append(candidate)
         return images
+
+    def enrich_listings(self, listings: List[HousingData], limit: int = 10) -> List[HousingData]:
+        """補抓前 N 筆 591 詳頁資訊。"""
+        enriched: list[HousingData] = []
+        for idx, listing in enumerate(listings):
+            if idx >= limit or not listing.url:
+                enriched.append(listing)
+                continue
+            try:
+                detail = self.fetch_detail(listing.url)
+                enriched.append(self.merge_detail(listing, detail))
+            except Exception as exc:
+                logger.warning(f"補抓 591 詳頁失敗 {listing.url}: {exc}")
+                enriched.append(listing)
+        return enriched
+
+    def fetch_detail(self, url: str) -> dict[str, object]:
+        """抓取並解析 591 詳頁。"""
+        response = self._fetch_url(url)
+        return self.parse_detail_html(response.text)
+
+    def parse_detail_html(self, html: str) -> dict[str, object]:
+        """從 591 詳頁 HTML 提取補強資訊。"""
+        soup = self._parse_html(html)
+
+        info_board = soup.select_one("section.block.info-board")
+        service = soup.select_one("section.block.service")
+        house_detail = soup.select_one("section.block.house-detail")
+        owner_note = soup.select_one("section.block.house-condition")
+
+        result: dict[str, object] = {
+            "detail_shortest_lease": None,
+            "detail_rules": None,
+            "detail_included_fees": None,
+            "detail_deposit": None,
+            "detail_management_fee": None,
+            "detail_parking_fee": None,
+            "detail_property_registration": None,
+            "detail_direction": None,
+            "detail_owner_name": None,
+            "detail_contact_phone": None,
+            "detail_facilities": [],
+            "room_type": None,
+            "floor_area": None,
+            "floor": None,
+            "description": None,
+        }
+
+        if info_board:
+            pattern = info_board.select_one("div.pattern")
+            if pattern:
+                parts = [span.get_text(" ", strip=True) for span in pattern.select("span") if span.get_text(" ", strip=True) and span.get_text(" ", strip=True) != "|"]
+                if parts:
+                    result["room_type"] = parts[0]
+                for part in parts:
+                    if "坪" in part and result["floor_area"] is None:
+                        match = re.search(r"(\d+(?:\.\d+)?)", part)
+                        if match:
+                            result["floor_area"] = float(match.group(1))
+                    if "F/" in part:
+                        result["floor"] = part
+
+            labels = [span.get_text(" ", strip=True) for span in info_board.select("div.house-label span.label-item") if span.get_text(" ", strip=True)]
+            if labels:
+                result["description"] = " ".join(labels)
+
+        if service:
+            cates = service.select("div.service-cate")
+            for cate in cates:
+                label = cate.select_one("p")
+                value = cate.select_one("span")
+                label_text = label.get_text(" ", strip=True) if label else ""
+                value_text = value.get_text(" ", strip=True) if value else ""
+                if label_text == "租住說明":
+                    result["detail_shortest_lease"] = value_text
+                elif label_text == "房屋守則":
+                    result["detail_rules"] = value_text
+
+            facilities = [dd.get_text(" ", strip=True) for dd in service.select("div.facility.service-facility dd.text")]
+            result["detail_facilities"] = facilities
+
+        if house_detail:
+            for item in house_detail.select("div.item"):
+                label = item.select_one("span.label")
+                value = item.select_one("span.value")
+                label_text = label.get_text(" ", strip=True) if label else ""
+                value_text = value.get_text(" ", strip=True) if value else ""
+                if label_text == "租金含":
+                    result["detail_included_fees"] = value_text
+                elif label_text == "押金":
+                    result["detail_deposit"] = value_text
+                elif label_text == "管理費":
+                    result["detail_management_fee"] = value_text
+                elif label_text == "車位費":
+                    result["detail_parking_fee"] = value_text
+                elif label_text == "產權登記":
+                    result["detail_property_registration"] = value_text
+                elif label_text == "朝向":
+                    result["detail_direction"] = value_text
+
+        if owner_note:
+            owner_text = owner_note.get_text(" ", strip=True)
+            owner_match = re.search(r"屋主[:：]\s*([^\s]+)", owner_text)
+            phone_match = re.search(r"09\d{2}[- ]?\d{3}[- ]?\d{3}", owner_text)
+            if owner_match:
+                result["detail_owner_name"] = owner_match.group(1)
+            if phone_match:
+                result["detail_contact_phone"] = phone_match.group(0).replace(" ", "")
+            if result["description"]:
+                result["description"] = f"{result['description']} {owner_text[:300]}".strip()
+            else:
+                result["description"] = owner_text[:300]
+
+        return result
+
+    @staticmethod
+    def merge_detail(listing: HousingData, detail: dict[str, object]) -> HousingData:
+        """將詳頁補強資訊合併回既有物件。"""
+        return replace(
+            listing,
+            room_type=detail.get("room_type") or listing.room_type,
+            floor_area=detail.get("floor_area") if detail.get("floor_area") is not None else listing.floor_area,
+            floor=detail.get("floor") or listing.floor,
+            description=detail.get("description") or listing.description,
+            contact=Contact(
+                name=detail.get("detail_owner_name") or listing.contact.name,
+                phone=detail.get("detail_contact_phone") or listing.contact.phone,
+                email=listing.contact.email,
+            ),
+            detail_shortest_lease=detail.get("detail_shortest_lease"),
+            detail_rules=detail.get("detail_rules"),
+            detail_included_fees=detail.get("detail_included_fees"),
+            detail_deposit=detail.get("detail_deposit"),
+            detail_management_fee=detail.get("detail_management_fee"),
+            detail_parking_fee=detail.get("detail_parking_fee"),
+            detail_property_registration=detail.get("detail_property_registration"),
+            detail_direction=detail.get("detail_direction"),
+            detail_owner_name=detail.get("detail_owner_name"),
+            detail_contact_phone=detail.get("detail_contact_phone"),
+            detail_facilities=list(detail.get("detail_facilities") or []),
+        )
 
     def _extract_url(self, title_link) -> str:
         """提取詳頁連結。"""

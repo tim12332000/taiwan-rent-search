@@ -197,6 +197,10 @@ def listing_text(row: dict[str, str]) -> str:
         row.get("location_district", ""),
         row.get("location_area", ""),
         row.get("room_type", ""),
+        row.get("detail_shortest_lease", ""),
+        row.get("detail_rules", ""),
+        row.get("detail_included_fees", ""),
+        row.get("detail_facilities", ""),
     ]
     return normalize_text(" ".join(parts))
 

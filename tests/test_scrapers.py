@@ -386,6 +386,109 @@ class TestFang591Scraper:
         assert data.contact.name == "未公開"
         assert data.floor_area == 9.0
 
+    def test_parse_detail_html_extracts_service_and_cost_fields(self):
+        scraper = Fang591Scraper()
+        detail = scraper.parse_detail_html(
+            """
+            <section class="block info-board">
+              <div class="house-label">
+                <span class="label-item">可開伙</span>
+                <span class="label-item">有電梯</span>
+              </div>
+              <div class="pattern">
+                <span>獨立套房</span>
+                <span>20坪</span>
+                <span>10F/18F</span>
+              </div>
+            </section>
+            <section class="block service">
+              <div class="service-cate"><div><p>租住說明</p><span>最短租期一年，可隨時遷入</span></div></div>
+              <div class="service-cate"><div><p>房屋守則</p><span>此房屋男女皆可租住，不可養寵物</span></div></div>
+              <div class="facility service-facility">
+                <dl><dd class="text">冰箱</dd></dl>
+                <dl><dd class="text">天然瓦斯</dd></dl>
+              </div>
+            </section>
+            <section class="block house-detail">
+              <div class="item"><span class="label">租金含</span><span class="value">第四台 網路</span></div>
+              <div class="item"><span class="label">押金</span><span class="value">一個月</span></div>
+              <div class="item"><span class="label">管理費</span><span class="value">2,400元/月</span></div>
+              <div class="item"><span class="label">車位費</span><span class="value">費用另計</span></div>
+              <div class="item"><span class="label">產權登記</span><span class="value">未辦理</span></div>
+              <div class="item"><span class="label">朝向</span><span class="value">坐東朝西</span></div>
+            </section>
+            <section class="block house-condition">
+              <div>屋主: 楊先生</div>
+              <div>0932-034-231</div>
+              <div>本案有短租服務 歡迎致電詢問</div>
+            </section>
+            """
+        )
+
+        assert detail["detail_shortest_lease"] == "最短租期一年，可隨時遷入"
+        assert detail["detail_rules"] == "此房屋男女皆可租住，不可養寵物"
+        assert detail["detail_included_fees"] == "第四台 網路"
+        assert detail["detail_deposit"] == "一個月"
+        assert detail["detail_management_fee"] == "2,400元/月"
+        assert detail["detail_parking_fee"] == "費用另計"
+        assert detail["detail_property_registration"] == "未辦理"
+        assert detail["detail_direction"] == "坐東朝西"
+        assert detail["detail_owner_name"] == "楊先生"
+        assert detail["detail_contact_phone"] == "0932-034-231"
+        assert detail["detail_facilities"] == ["冰箱", "天然瓦斯"]
+        assert detail["room_type"] == "獨立套房"
+        assert detail["floor_area"] == 20.0
+        assert detail["floor"] == "10F/18F"
+
+    def test_merge_detail_overwrites_missing_listing_fields(self):
+        scraper = Fang591Scraper()
+        base_listing = HousingData(
+            id="591-123",
+            platform="591",
+            title="測試房源",
+            price=20000,
+            location=Location(county="台北市", district="信義區", area="光復南路"),
+            room_type="",
+            bedrooms=1,
+            bathrooms=1,
+            floor_area=None,
+            floor=None,
+            contact=Contact(name="未公開"),
+            images=[],
+            description="原始描述",
+            url="https://rent.591.com.tw/123",
+            scraped_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        detail = {
+            "room_type": "獨立套房",
+            "floor_area": 20.0,
+            "floor": "10F/18F",
+            "description": "補強描述",
+            "detail_shortest_lease": "最短租期一年",
+            "detail_rules": "不可養寵物",
+            "detail_included_fees": "第四台 網路",
+            "detail_deposit": "一個月",
+            "detail_management_fee": "2,400元/月",
+            "detail_parking_fee": "費用另計",
+            "detail_property_registration": "未辦理",
+            "detail_direction": "坐東朝西",
+            "detail_owner_name": "楊先生",
+            "detail_contact_phone": "0932-034-231",
+            "detail_facilities": ["冰箱", "天然瓦斯"],
+        }
+
+        merged = scraper.merge_detail(base_listing, detail)
+
+        assert merged.room_type == "獨立套房"
+        assert merged.floor_area == 20.0
+        assert merged.floor == "10F/18F"
+        assert merged.description == "補強描述"
+        assert merged.contact.name == "楊先生"
+        assert merged.contact.phone == "0932-034-231"
+        assert merged.detail_management_fee == "2,400元/月"
+        assert merged.detail_facilities == ["冰箱", "天然瓦斯"]
+
     def test_scrape_parses_live_cards_from_mocked_response(self, monkeypatch):
         """測試 scrape() 可解析現行 recommend-ware 列表。"""
         scraper = Fang591Scraper()
@@ -1032,7 +1135,7 @@ class TestCsvExport:
         mixrent_records = [self._sample_records()[0]]
         rent591_records = [self._sample_records()[1]]
 
-        monkeypatch.setattr(Fang591Scraper, "scrape", lambda self, county="", max_pages=3: rent591_records)
+        monkeypatch.setattr(Fang591Scraper, "scrape", lambda self, county="", max_pages=3, enrich_details=False, detail_limit=10: rent591_records)
         monkeypatch.setattr(MixRentScraper, "scrape", lambda self, county="台北市", district="", query="", max_pages=3: mixrent_records)
 
         output = tmp_path / "combined.csv"
@@ -1041,6 +1144,39 @@ class TestCsvExport:
         assert path == output
         assert len(written_records) == 2
         assert output.exists()
+
+    def test_scrape_sources_to_csv_passes_591_enrichment_flags(self, monkeypatch, tmp_path):
+        calls = {}
+        sample_record = self._sample_records()[0]
+
+        def fake_591(self, county="", max_pages=3, enrich_details=False, detail_limit=10):
+            calls["county"] = county
+            calls["max_pages"] = max_pages
+            calls["enrich_details"] = enrich_details
+            calls["detail_limit"] = detail_limit
+            return [sample_record]
+
+        monkeypatch.setattr(Fang591Scraper, "scrape", fake_591)
+
+        output = tmp_path / "enriched.csv"
+        path, written_records = scrape_sources_to_csv(
+            ["591"],
+            "台北市",
+            output_path=output,
+            delay=0,
+            max_pages=2,
+            enrich_591_details=True,
+            enrich_591_detail_limit=3,
+        )
+
+        assert path == output
+        assert len(written_records) == 1
+        assert calls == {
+            "county": "台北市",
+            "max_pages": 2,
+            "enrich_details": True,
+            "detail_limit": 3,
+        }
 
 
 class TestLocationAndContact:

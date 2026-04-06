@@ -1,6 +1,6 @@
 """台灣租屋爬蟲 - 核心模塊"""
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import List, Optional
 from datetime import datetime
 
@@ -40,6 +40,17 @@ class HousingData:
     url: str
     scraped_at: datetime
     updated_at: datetime
+    detail_shortest_lease: Optional[str] = None
+    detail_rules: Optional[str] = None
+    detail_included_fees: Optional[str] = None
+    detail_deposit: Optional[str] = None
+    detail_management_fee: Optional[str] = None
+    detail_parking_fee: Optional[str] = None
+    detail_property_registration: Optional[str] = None
+    detail_direction: Optional[str] = None
+    detail_owner_name: Optional[str] = None
+    detail_contact_phone: Optional[str] = None
+    detail_facilities: List[str] = field(default_factory=list)
 
     def to_dict(self):
         """轉換為字典（flatten Location和Contact）"""
@@ -59,6 +70,7 @@ class HousingData:
         data['updated_at'] = data['updated_at'].isoformat()
         # 圖片列表轉為逗號分隔
         data['images'] = ','.join(data['images'])
+        data['detail_facilities'] = ','.join(data['detail_facilities'])
         return data
 
 

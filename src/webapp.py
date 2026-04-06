@@ -37,6 +37,11 @@ def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
         "cover": images[0] if images else "",
         "kitchen_sink_signal": has_kitchen_sink_signal(row),
         "updated_at": row.get("updated_at", ""),
+        "detail_shortest_lease": row.get("detail_shortest_lease", ""),
+        "detail_rules": row.get("detail_rules", ""),
+        "detail_deposit": row.get("detail_deposit", ""),
+        "detail_management_fee": row.get("detail_management_fee", ""),
+        "detail_facilities": row.get("detail_facilities", ""),
         "search_text": " ".join(
             part for part in [
                 row.get("platform", ""),
@@ -45,6 +50,11 @@ def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
                 row.get("location_area", ""),
                 row.get("room_type", ""),
                 row.get("description", ""),
+                row.get("detail_shortest_lease", ""),
+                row.get("detail_rules", ""),
+                row.get("detail_management_fee", ""),
+                row.get("detail_deposit", ""),
+                row.get("detail_facilities", ""),
             ] if part
         ).lower(),
     }
@@ -252,6 +262,11 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       font-weight: 700;
       line-height: 1.7;
     }}
+    .meta-sub {{
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }}
     .desc {{
       color: var(--muted);
       line-height: 1.7;
@@ -259,6 +274,13 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
       overflow: hidden;
+    }}
+    .rule, .facility {{
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+      border-left: 3px solid rgba(15,118,110,.18);
+      padding-left: 10px;
     }}
     .actions a {{
       color: var(--accent-2);
@@ -398,6 +420,13 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         : `<div class="placeholder">無圖片</div>`;
       const kitchen = item.kitchen_sink_signal ? '有流理臺訊號' : '待確認';
       const floorArea = item.floor_area ? `${{item.floor_area}}坪` : '坪數待補';
+      const details = [
+        item.detail_shortest_lease ? `最短租期：${{item.detail_shortest_lease}}` : '',
+        item.detail_deposit ? `押金：${{item.detail_deposit}}` : '',
+        item.detail_management_fee ? `管理費：${{item.detail_management_fee}}` : '',
+      ].filter(Boolean).join(' · ');
+      const rules = item.detail_rules ? `<div class="rule">守則：${{item.detail_rules}}</div>` : '';
+      const facilities = item.detail_facilities ? `<div class="facility">設備：${{item.detail_facilities}}</div>` : '';
       return `
         <article class="listing">
           <div>${{image}}</div>
@@ -409,7 +438,10 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
             </div>
             <h3 class="title">${{item.title}}</h3>
             <div class="meta">${{formatNumber(item.price)}} 元 / 月 · ${{floorArea}} · ${{item.area || '路段待補'}}</div>
+            <div class="meta-sub">${{details || '細節待補'}}</div>
             <div class="desc">${{item.description || '目前沒有額外描述。'}}</div>
+            ${{rules}}
+            ${{facilities}}
             <div class="actions"><a href="${{item.url}}" target="_blank" rel="noreferrer">查看原始房源</a></div>
           </div>
         </article>
@@ -489,4 +521,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

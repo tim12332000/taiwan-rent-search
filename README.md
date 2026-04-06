@@ -62,6 +62,9 @@ python -m src.main --county 台北市 --source 591 --source mixrent --source hou
 # 擴量抓取（對支援分頁的來源抓多頁）
 python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3
 
+# 補抓 591 詳頁資訊（最短租期、房屋守則、管理費、設備等）
+python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3 --enrich-591-details --detail-limit 5
+
 # 依條件分析 CSV 並輸出候選清單
 python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-kitchen-sink --top 5
 
@@ -96,6 +99,7 @@ python -m src.webapp --input data\\591-ddroom-housefun-mixrent_taipei_20260406_2
 - [x] 現有來源開始擴量
 - [x] 四來源多頁資料池
 - [x] 本地即時搜尋網站
+- [x] 591 詳頁補強
 - [ ] 圖片下載 & AI審核
 - [ ] 永慶/信義平台
 - [x] 數據存儲 (CSV)

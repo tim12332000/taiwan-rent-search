@@ -86,7 +86,7 @@
 
 ### 測試代碼
 - [x] 創建 `tests/test_scrapers.py`
-- [x] 68個測試用例
+- [x] 72個測試用例
   - 數據模型測試
   - 爬蟲類初始化
   - User-Agent 輪換
@@ -122,12 +122,13 @@
 12. ✅ **DDRoom 已正式接入** - 已可納入四來源整合資料池
 13. ✅ **資料池已開始擴量** - `591`、`MixRent`、`Housefun`、`DDRoom` 已支援分頁抓取
 14. ✅ **本地搜尋網站已完成** - 已可直接產出 `search_app.html`
+15. ✅ **591 詳頁補強已完成** - 已可補抓最短租期、房屋守則、押金、管理費、設備等欄位
 
 ### 目前缺口
 1. ⏳ **來源數仍偏少** - `樂屋網` 等來源還沒接
 3. ⏳ **欄位仍以列表頁為主** - `bathrooms`、`contact`、`floor` 等資訊仍多半缺失或推估
 4. ⏳ **缺少資料品質統計** - 尚未輸出 skipped rows、重複筆數、欄位完整率
-5. ⏳ **缺少 detail-page enrichment** - 需要第二階段補詳頁資料
+5. ⏳ **detail-page enrichment 尚未普及到多來源** - 目前先完成 591，其他來源仍待補
 6. ⏳ **缺少長期抗 drift 測試** - 還沒保存真實 fixture 做回歸保護
 7. ⏳ **district 參數尚未接線** - 目前 API 簽名保留，但還沒映射到查詢條件
 8. ⏳ **圖片評分尚未接線** - 目前只能先做文字訊號與待看圖標記
@@ -140,6 +141,11 @@
 1. **重新產出一份資料檔**
    ```bash
    python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3
+   ```
+
+2. **補抓 591 詳頁資訊**
+   ```bash
+   python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3 --enrich-591-details --detail-limit 5
    ```
 
 2. **依條件輸出候選清單**
@@ -272,8 +278,7 @@ omx --madmax --high
 ## 💡 提示
 
 - 所有代碼已設置，邏輯就緒
-- 目前測試集共 40 個案例，已全數通過
-- 目前測試集共 68 個案例，已全數通過
+- 目前測試集共 72 個案例，已全數通過
 - 已產出第一份真實 CSV：`data/591_taipei_*.csv`
 - 已產出第一份多來源整合 CSV：`data/591-mixrent_taipei_*.csv`
 - 已產出第一份三來源整合 CSV：`data/591-housefun-mixrent_taipei_*.csv`
@@ -283,9 +288,10 @@ omx --madmax --high
 - 已可產出人看報告：`data/*shortlist*.md`
 - 已可產出圖文報告：`data/*shortlist*.html`
 - 已可產出本地搜尋網站：`data/*search_app.html`
+- 已可在 591 來源補抓詳頁欄位：最短租期 / 房屋守則 / 押金 / 管理費 / 設備
 - 列表頁抓取已可工作，但仍是單頁版與列表欄位版
 - 覆蓋率驗證已通過，總覆蓋率為 85%
-- 下一步最有價值的是第 5 個來源 + pagination + 詳頁補強
+- 下一步最有價值的是多來源 detail enrichment + 資料品質統計
 
 ---
 

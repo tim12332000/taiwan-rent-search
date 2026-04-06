@@ -81,6 +81,11 @@ def test_listing_to_view_model_extracts_cover_and_search_text():
         "url": "https://rent.591.com.tw/1",
         "images": "https://img/1.jpg,https://img/2.jpg",
         "updated_at": "2026-01-01T00:00:00",
+        "detail_shortest_lease": "最短租期一年",
+        "detail_rules": "不可養寵物",
+        "detail_deposit": "二個月",
+        "detail_management_fee": "2400元/月",
+        "detail_facilities": "冰箱,天然瓦斯",
     }
 
     model = listing_to_view_model(row)
@@ -88,6 +93,7 @@ def test_listing_to_view_model_extracts_cover_and_search_text():
     assert model["cover"] == "https://img/1.jpg"
     assert model["kitchen_sink_signal"] is True
     assert "信義區" in model["search_text"]
+    assert "最短租期一年" in model["search_text"]
 
 
 def test_prepare_listing_view_models_reads_csv(tmp_path):
@@ -112,6 +118,7 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert 'id="q"' in html_text
     assert "const listings =" in html_text
     assert "可開伙套房" in html_text
+    assert "最短租期" in html_text
 
 
 def test_build_search_app_output_path_uses_input_stem():
