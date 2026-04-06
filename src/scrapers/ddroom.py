@@ -25,7 +25,7 @@ class DDRoomScraper(BaseScraper):
         county: str = "台北市",
         district: str = "",
         keyword: str = "",
-        max_pages: int = 3,
+        max_pages: int = 1,
         **kwargs,
     ) -> List[HousingData]:
         search_keyword = keyword or f"{county}{district}".strip() or county

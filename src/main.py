@@ -126,21 +126,22 @@ def scrape_sources(
     sources: list[str],
     county: str,
     delay: float = 2.0,
+    max_pages: int = 3,
 ) -> list[HousingData]:
     records: list[HousingData] = []
     for source in sources:
         if source == "591":
             with Fang591Scraper(delay=delay) as scraper:
-                records.extend(scraper.scrape(county=county))
+                records.extend(scraper.scrape(county=county, max_pages=max_pages))
         elif source == "mixrent":
             with MixRentScraper(delay=delay) as scraper:
-                records.extend(scraper.scrape(county=county))
+                records.extend(scraper.scrape(county=county, max_pages=max_pages))
         elif source == "housefun":
             with HousefunScraper(delay=delay) as scraper:
                 records.extend(scraper.scrape(county=county))
         elif source == "ddroom":
             with DDRoomScraper(delay=delay) as scraper:
-                records.extend(scraper.scrape(county=county))
+                records.extend(scraper.scrape(county=county, max_pages=max_pages))
         else:
             raise ValueError(f"Unsupported source: {source}")
     return dedupe_records(records)
@@ -151,8 +152,9 @@ def scrape_sources_to_csv(
     county: str,
     output_path: str | Path | None = None,
     delay: float = 2.0,
+    max_pages: int = 3,
 ) -> tuple[Path, list[HousingData]]:
-    records = scrape_sources(sources=sources, county=county, delay=delay)
+    records = scrape_sources(sources=sources, county=county, delay=delay, max_pages=max_pages)
     target = Path(output_path) if output_path else build_multi_source_output_path(county, sources)
     path = export_to_csv(records, target)
     return path, records
@@ -164,13 +166,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", help="輸出 CSV 路徑")
     parser.add_argument("--delay", type=float, default=2.0, help="請求延遲秒數")
     parser.add_argument("--source", action="append", choices=["591", "mixrent", "housefun", "ddroom"], help="抓取來源，可重複傳入")
+    parser.add_argument("--max-pages", type=int, default=3, help="每個支援分頁的來源最多抓幾頁")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    sources = args.source or ["591"]
-    path, records = scrape_sources_to_csv(sources=sources, county=args.county, output_path=args.output, delay=args.delay)
+    if args.source:
+        path, records = scrape_sources_to_csv(
+            sources=args.source,
+            county=args.county,
+            output_path=args.output,
+            delay=args.delay,
+            max_pages=args.max_pages,
+        )
+    else:
+        path, records = scrape_to_csv(
+            county=args.county,
+            output_path=args.output,
+            delay=args.delay,
+        )
     print(f"CSV exported: {path}")
     print(f"Records: {len(records)}")
 

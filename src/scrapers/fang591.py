@@ -28,7 +28,7 @@ class Fang591Scraper(BaseScraper):
     def __init__(self, delay: float = 2.0):
         super().__init__(name="591房屋", delay=delay)
 
-    def scrape(self, county: str = "", district: str = "", **kwargs) -> List[HousingData]:
+    def scrape(self, county: str = "", district: str = "", max_pages: int = 1, **kwargs) -> List[HousingData]:
         """
         爬取591房屋數據
         
@@ -41,34 +41,31 @@ class Fang591Scraper(BaseScraper):
         """
         logger.info(f"開始爬取591房屋 - {county} {district}")
         
-        # 構建搜索 URL
-        search_url = self._build_search_url(county, district)
-        
         try:
-            response = self._fetch_url(search_url)
-            html = response.text
-            soup = self._parse_html(html)
-            
             housing_list = []
-            
-            # 現行 591 列表頁使用 Nuxt-rendered `recommend-ware` 卡片。
-            items = soup.select("div.recommend-ware")
-            if not items:
-                # 保留舊 selector，讓既有離線 fixture 仍可工作。
-                items = soup.find_all("div", class_="item")
-            
-            if not items:
-                logger.warning("未找到房源卡片，可能需要Selenium")
-                return housing_list
-            
-            for item in items:
-                try:
-                    data = self._parse_item(item, fallback_county=county)
-                    if data:
-                        housing_list.append(data)
-                except Exception as e:
-                    logger.warning(f"解析房源失敗: {e}")
-                    continue
+            for page in range(1, max_pages + 1):
+                search_url = self._build_search_url(county, district, page=page)
+                response = self._fetch_url(search_url)
+                html = response.text
+                soup = self._parse_html(html)
+
+                items = soup.select("div.recommend-ware")
+                if not items:
+                    items = soup.find_all("div", class_="item")
+
+                if not items:
+                    if page == 1:
+                        logger.warning("未找到房源卡片，可能需要Selenium")
+                    break
+
+                for item in items:
+                    try:
+                        data = self._parse_item(item, fallback_county=county)
+                        if data:
+                            housing_list.append(data)
+                    except Exception as e:
+                        logger.warning(f"解析房源失敗: {e}")
+                        continue
             
             logger.info(f"✓ 成功爬取 {len(housing_list)} 筆房源")
             return housing_list
@@ -77,7 +74,7 @@ class Fang591Scraper(BaseScraper):
             logger.error(f"爬蟲錯誤: {e}")
             return []
 
-    def _build_search_url(self, county: str = "", district: str = "") -> str:
+    def _build_search_url(self, county: str = "", district: str = "", page: int = 1) -> str:
         """構建搜索URL"""
         url = f"{self.BASE_URL}/list"
         params = {
@@ -86,6 +83,8 @@ class Fang591Scraper(BaseScraper):
         
         if county:
             params['region'] = self._map_county_code(county)
+        if page > 1:
+            params["page"] = page
         
         return f"{url}?{urlencode(params)}"
 

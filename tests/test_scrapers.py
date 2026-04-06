@@ -227,7 +227,7 @@ class TestFang591Scraper:
     def test_scrape_parses_multiple_items_from_mocked_response(self, monkeypatch):
         """測試 scrape() 可解析多筆離線 HTML。"""
         scraper = Fang591Scraper()
-        html = """
+        html_page1 = """
         <div class="item">
             <h3 class="item-title">台北市中山區套房</h3>
             <span class="price">15,000元</span>
@@ -246,20 +246,32 @@ class TestFang591Scraper:
             <a class="item-link" href="/rent/detail/beta"></a>
         </div>
         """
+        html_page2 = """
+        <div class="item">
+            <h3 class="item-title">台北市大安區套房</h3>
+            <span class="price">18,000元</span>
+            <span class="location">台北市 大安區 和平東路</span>
+            <span class="room-type">獨立套房</span>
+            <div>1房 1衛</div>
+            <a class="item-link" href="/rent/detail/gamma"></a>
+        </div>
+        """
+        responses = [html_page1, html_page2]
 
         monkeypatch.setattr(
             scraper,
             "_fetch_url",
-            lambda url, **kwargs: SimpleNamespace(text=html),
+            lambda url, **kwargs: SimpleNamespace(text=responses.pop(0)),
         )
 
-        result = scraper.scrape(county="台北市")
+        result = scraper.scrape(county="台北市", max_pages=2)
 
-        assert len(result) == 2
+        assert len(result) == 3
         assert result[0].title == "台北市中山區套房"
         assert result[0].bedrooms == 3
         assert result[1].contact.name == "未公開"
         assert result[1].location.county == "新北市"
+        assert result[2].location.district == "大安區"
 
     def test_scrape_skips_bad_item_and_continues(self, monkeypatch):
         """測試單筆解析失敗時，不影響其他房源繼續返回。"""
@@ -478,7 +490,7 @@ class TestMixRentScraper:
 
     def test_scrape_parses_mocked_response(self, monkeypatch):
         scraper = MixRentScraper()
-        html = """
+        html_page1 = """
         <div class="rental_result">
           <div class="row"><div class="col-xs-12 col-sm-10"><a class="house_title" href="https://example.com/1" name="來源A">士林區好房</a></div></div>
           <div class="row">
@@ -494,13 +506,24 @@ class TestMixRentScraper:
           </div>
         </div>
         """
+        html_page2 = """
+        <div class="rental_result">
+          <div class="row"><div class="col-xs-12 col-sm-10"><a class="house_title" href="https://example.com/3" name="來源C">信義區好房</a></div></div>
+          <div class="row">
+            <div class="col-sm-2 col-sm-push-10"><ul class="list-inline feature_list"><li><span class="label label-success"><strong>12</strong> 坪</span></li><li><span class="label label-primary">$ <strong>22000</strong></span></li></ul></div>
+            <div class="col-sm-10 col-sm-pull-2"><div class="house_address">台北市信義區松仁路</div><div class="house_description">可開伙 1房 1衛</div></div>
+          </div>
+        </div>
+        """
+        responses = [html_page1, html_page2]
 
-        monkeypatch.setattr(scraper, "_fetch_url", lambda url, **kwargs: SimpleNamespace(text=html))
-        result = scraper.scrape(county="台北市")
+        monkeypatch.setattr(scraper, "_fetch_url", lambda url, **kwargs: SimpleNamespace(text=responses.pop(0)))
+        result = scraper.scrape(county="台北市", max_pages=2)
 
-        assert len(result) == 2
+        assert len(result) == 3
         assert result[0].location.district == "士林區"
         assert result[1].location.district == "大安區"
+        assert result[2].location.district == "信義區"
 
     def test_parse_item_rejects_non_taipei_listing(self):
         scraper = MixRentScraper()
@@ -807,7 +830,7 @@ class TestDDRoomScraper:
 
         monkeypatch.setattr(scraper, "_fetch_url", fake_fetch)
 
-        result = scraper.scrape(county="台北市")
+        result = scraper.scrape(county="台北市", max_pages=2)
 
         assert len(result) == 2
         assert result[0].location.district == "大安區"
@@ -983,11 +1006,11 @@ class TestCsvExport:
         mixrent_records = [self._sample_records()[0]]
         rent591_records = [self._sample_records()[1]]
 
-        monkeypatch.setattr(Fang591Scraper, "scrape", lambda self, county="": rent591_records)
-        monkeypatch.setattr(MixRentScraper, "scrape", lambda self, county="台北市", district="", query="": mixrent_records)
+        monkeypatch.setattr(Fang591Scraper, "scrape", lambda self, county="", max_pages=3: rent591_records)
+        monkeypatch.setattr(MixRentScraper, "scrape", lambda self, county="台北市", district="", query="", max_pages=3: mixrent_records)
 
         output = tmp_path / "combined.csv"
-        path, written_records = scrape_sources_to_csv(["591", "mixrent"], "台北市", output_path=output, delay=0)
+        path, written_records = scrape_sources_to_csv(["591", "mixrent"], "台北市", output_path=output, delay=0, max_pages=2)
 
         assert path == output
         assert len(written_records) == 2

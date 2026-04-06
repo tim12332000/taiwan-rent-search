@@ -58,6 +58,9 @@ python -m src.main --county 台北市 --source 591 --source mixrent --source hou
 # 抓取四來源並整合輸出 CSV
 python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom
 
+# 擴量抓取（對支援分頁的來源抓多頁）
+python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3
+
 # 依條件分析 CSV 並輸出候選清單
 python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-kitchen-sink --top 5
 
@@ -86,6 +89,7 @@ python -m src.analysis --destination-address "台北市信義區松仁路100號 
 - [x] 多來源整合輸出
 - [x] 三來源資料池
 - [x] 四來源資料池
+- [x] 現有來源開始擴量
 - [ ] 圖片下載 & AI審核
 - [ ] 永慶/信義平台
 - [x] 數據存儲 (CSV)

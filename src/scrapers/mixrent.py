@@ -38,21 +38,30 @@ class MixRentScraper(BaseScraper):
     def __init__(self, delay: float = 1.5):
         super().__init__(name="MixRent", delay=delay)
 
-    def scrape(self, county: str = "台北市", district: str = "", query: str = "", **kwargs) -> List[HousingData]:
+    def scrape(
+        self,
+        county: str = "台北市",
+        district: str = "",
+        query: str = "",
+        max_pages: int = 1,
+        **kwargs,
+    ) -> List[HousingData]:
         search_term = query or f"{county}{district}".strip() or "台北市"
-        search_url = self._build_search_url(search_term)
         logger.info(f"開始爬取 MixRent - {search_term}")
 
         try:
-            response = self._fetch_url(search_url)
-            soup = self._parse_html(response.text)
-            items = soup.select("div.rental_result")
             listings = []
-
-            for item in items:
-                data = self._parse_item(item, fallback_county=county)
-                if data:
-                    listings.append(data)
+            for page in range(1, max_pages + 1):
+                search_url = self._build_search_url(search_term, page=page)
+                response = self._fetch_url(search_url)
+                soup = self._parse_html(response.text)
+                items = soup.select("div.rental_result")
+                if not items:
+                    break
+                for item in items:
+                    data = self._parse_item(item, fallback_county=county)
+                    if data:
+                        listings.append(data)
 
             logger.info(f"✓ 成功爬取 MixRent {len(listings)} 筆房源")
             return listings
@@ -60,8 +69,11 @@ class MixRentScraper(BaseScraper):
             logger.error(f"MixRent 爬蟲錯誤: {exc}")
             return []
 
-    def _build_search_url(self, search_term: str) -> str:
-        return f"{self.BASE_URL}/search.php?q={quote_plus(search_term)}"
+    def _build_search_url(self, search_term: str, page: int = 1) -> str:
+        url = f"{self.BASE_URL}/search.php?q={quote_plus(search_term)}"
+        if page > 1:
+            url += f"&page={page}"
+        return url
 
     def _parse_item(self, item, fallback_county: str = "台北市") -> HousingData | None:
         title_node = item.select_one("a.house_title")

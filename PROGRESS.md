@@ -36,12 +36,14 @@
   - URL 構建
   - HTML 解析邏輯
   - 數據提取方法
+  - 已支援分頁抓取（由 `max_pages` 控制）
 
 - [x] **MixRent 聚合爬蟲** (`src/scrapers/mixrent.py`)
   - MixRentScraper 類
   - 聚合搜尋結果解析
   - 原始來源連結保留
   - 台北市結果過濾
+  - 已支援分頁抓取（由 `max_pages` 控制）
 
 - [x] **好房網搜尋爬蟲** (`src/scrapers/housefun.py`)
   - 已打通 `/ashx/search/search.ashx`
@@ -66,6 +68,7 @@
   - 扁平化輸出為 CSV
   - 自動建立 `data/` 輸出路徑
   - 支援多來源抓取與合併去重
+  - 支援 `max_pages` 控制可分頁來源抓取深度
 
 - [x] **條件分析核心** (`src/analysis.py`)
   - 從既有 CSV 讀取房源
@@ -110,9 +113,10 @@
 10. ✅ **多來源整合已完成** - 已可合併 `591 + MixRent` 並輸出整合資料池
 11. ✅ **Housefun 已正式接入** - 已可納入三來源整合資料池
 12. ✅ **DDRoom 已正式接入** - 已可納入四來源整合資料池
+13. ✅ **資料池已開始擴量** - `591`、`MixRent`、`DDRoom` 已支援分頁抓取
 
 ### 目前缺口
-1. ⏳ **大多仍是單頁資料** - `591`、`MixRent`、`Housefun` 尚未做 pagination，`DDRoom` 已支援多頁
+1. ⏳ **仍未全來源分頁** - `Housefun` 尚未做 pagination，`591`、`MixRent`、`DDRoom` 已支援
 2. ⏳ **來源數仍偏少** - `樂屋網` 等來源還沒接
 3. ⏳ **欄位仍以列表頁為主** - `bathrooms`、`contact`、`floor` 等資訊仍多半缺失或推估
 4. ⏳ **缺少資料品質統計** - 尚未輸出 skipped rows、重複筆數、欄位完整率
@@ -128,7 +132,7 @@
 ### 立即執行
 1. **重新產出一份資料檔**
    ```bash
-   python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom
+   python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3
    ```
 
 2. **依條件輸出候選清單**
@@ -261,7 +265,7 @@ omx --madmax --high
 - 已產出第一份多來源整合 CSV：`data/591-mixrent_taipei_*.csv`
 - 已產出第一份三來源整合 CSV：`data/591-housefun-mixrent_taipei_*.csv`
 - 已產出第一份四來源整合 CSV：`data/591-ddroom-housefun-mixrent_taipei_*.csv`
-- 最新四來源整合資料池約 `45` 筆
+- 最新四來源整合資料池約 `62` 筆
 - 已可產出條件分析 CSV：`data/*analysis*.csv`
 - 已可產出人看報告：`data/*shortlist*.md`
 - 已可產出圖文報告：`data/*shortlist*.html`
