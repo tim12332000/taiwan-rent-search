@@ -79,9 +79,14 @@
   - 產出給人快速瀏覽的 Markdown shortlist 報告
   - 產出圖文卡片式 HTML 報告
 
+- [x] **本地即時搜尋網站** (`src/webapp.py`)
+  - 將最新資料池嵌入單檔 HTML
+  - 支援文字、來源、行政區、租金、坪數、流理臺、圖片條件即時篩選
+  - 不需後端即可在本地快速查
+
 ### 測試代碼
 - [x] 創建 `tests/test_scrapers.py`
-- [x] 63個測試用例
+- [x] 68個測試用例
   - 數據模型測試
   - 爬蟲類初始化
   - User-Agent 輪換
@@ -98,6 +103,7 @@
   - 條件分析與通勤估算驗證
   - Markdown shortlist 報告驗證
   - HTML shortlist 報告驗證
+  - 本地搜尋網站產生驗證
 
 ## 🔧 當前狀態
 
@@ -115,6 +121,7 @@
 11. ✅ **Housefun 已正式接入** - 已可納入三來源整合資料池
 12. ✅ **DDRoom 已正式接入** - 已可納入四來源整合資料池
 13. ✅ **資料池已開始擴量** - `591`、`MixRent`、`Housefun`、`DDRoom` 已支援分頁抓取
+14. ✅ **本地搜尋網站已完成** - 已可直接產出 `search_app.html`
 
 ### 目前缺口
 1. ⏳ **來源數仍偏少** - `樂屋網` 等來源還沒接
@@ -140,30 +147,35 @@
    python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-kitchen-sink --top 5
    ```
 
-3. **輸出給人快速瀏覽的 shortlist 報告**
+3. **產出本地即時搜尋網站**
+   ```bash
+   python -m src.webapp --input data\591-ddroom-housefun-mixrent_taipei_20260406_233623.csv
+   ```
+
+4. **輸出給人快速瀏覽的 shortlist 報告**
    ```bash
    python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-kitchen-sink --top 10
    ```
 
-4. **輸出圖文卡片式 HTML 報告**
+5. **輸出圖文卡片式 HTML 報告**
    ```bash
    python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-kitchen-sink --top 10
    ```
 
-5. **運行單元測試**
+6. **運行單元測試**
    ```bash
-   pytest tests/test_scrapers.py tests/test_analysis.py -v
+   pytest tests/test_scrapers.py tests/test_analysis.py tests/test_webapp.py -v
    ```
 
-6. **運行含覆蓋率的驗證**
+7. **運行含覆蓋率的驗證**
    ```bash
-   pytest tests/test_scrapers.py tests/test_analysis.py -v --cov=src
+   pytest tests/test_scrapers.py tests/test_analysis.py tests/test_webapp.py -v --cov=src
    ```
 
-7. **提交四來源整合功能**
+8. **提交本地搜尋網站功能**
    ```bash
    git add .
-   git commit -m "加入 DDRoom 爬蟲與四來源整合輸出"
+   git commit -m "加入本地即時搜尋網站"
    ```
 
 ### 在 Codex 中執行（推薦）
@@ -210,6 +222,7 @@ taiwan-rent-search/
 │   ├── analysis.py            ✅ 完成
 │   ├── main.py                ✅ 完成
 │   ├── models.py              ✅ 完成
+│   ├── webapp.py              ✅ 完成
 │   └── scrapers/
 │       ├── __init__.py
 │       ├── base.py            ✅ 完成
@@ -260,7 +273,7 @@ omx --madmax --high
 
 - 所有代碼已設置，邏輯就緒
 - 目前測試集共 40 個案例，已全數通過
-- 目前測試集共 63 個案例，已全數通過
+- 目前測試集共 68 個案例，已全數通過
 - 已產出第一份真實 CSV：`data/591_taipei_*.csv`
 - 已產出第一份多來源整合 CSV：`data/591-mixrent_taipei_*.csv`
 - 已產出第一份三來源整合 CSV：`data/591-housefun-mixrent_taipei_*.csv`
@@ -269,6 +282,7 @@ omx --madmax --high
 - 已可產出條件分析 CSV：`data/*analysis*.csv`
 - 已可產出人看報告：`data/*shortlist*.md`
 - 已可產出圖文報告：`data/*shortlist*.html`
+- 已可產出本地搜尋網站：`data/*search_app.html`
 - 列表頁抓取已可工作，但仍是單頁版與列表欄位版
 - 覆蓋率驗證已通過，總覆蓋率為 85%
 - 下一步最有價值的是第 5 個來源 + pagination + 詳頁補強

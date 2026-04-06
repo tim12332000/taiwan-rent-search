@@ -11,6 +11,7 @@ taiwan-rent-search/
 │   ├── analysis.py        # 條件分析、通勤估算、候選排序
 │   ├── main.py            # 執行抓取並匯出 CSV
 │   ├── models.py          # 數據模型
+│   ├── webapp.py          # 產生本地即時搜尋網站
 │   └── scrapers/          # 各平台爬蟲
 │       ├── __init__.py
 │       ├── base.py        # 基礎爬蟲類
@@ -71,6 +72,9 @@ python -m src.analysis --destination-address "台北市信義區松仁路100號 
 # 產出圖文穿插的 HTML 報告
 # 會同時輸出 analysis.csv + shortlist.md + shortlist.html
 python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-kitchen-sink --top 10
+
+# 產出本地即時搜尋網站
+python -m src.webapp --input data\\591-ddroom-housefun-mixrent_taipei_20260406_233623.csv
 ```
 
 ## 進度
@@ -91,6 +95,7 @@ python -m src.analysis --destination-address "台北市信義區松仁路100號 
 - [x] 四來源資料池
 - [x] 現有來源開始擴量
 - [x] 四來源多頁資料池
+- [x] 本地即時搜尋網站
 - [ ] 圖片下載 & AI審核
 - [ ] 永慶/信義平台
 - [x] 數據存儲 (CSV)
