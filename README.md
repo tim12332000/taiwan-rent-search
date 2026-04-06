@@ -15,6 +15,7 @@ taiwan-rent-search/
 │       ├── __init__.py
 │       ├── base.py        # 基礎爬蟲類
 │       └── fang591.py     # 591房屋爬蟲
+│       └── mixrent.py     # MixRent 聚合搜尋爬蟲
 ├── tests/
 │   ├── __init__.py
 │   └── test_scrapers.py   # 爬蟲測試
@@ -46,6 +47,9 @@ pytest tests/test_scrapers.py -v --cov=src
 # 抓取台北市 591 列表並輸出 CSV
 python -m src.main --county 台北市
 
+# 抓取多來源並整合輸出 CSV
+python -m src.main --county 台北市 --source 591 --source mixrent
+
 # 依條件分析 CSV 並輸出候選清單
 python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-kitchen-sink --top 5
 
@@ -62,12 +66,14 @@ python -m src.analysis --destination-address "台北市信義區松仁路100號 
 
 - [x] 平台研究
 - [x] 591房屋爬蟲框架
+- [x] MixRent 聚合爬蟲
 - [x] 資料模型
 - [x] 測試基礎建設與離線解析驗證
 - [x] 第一份 591 CSV 匯出
 - [x] 可重複使用的條件分析核心
 - [x] 人看得懂的 shortlist 報告
 - [x] 圖文卡片式 HTML 報告
+- [x] 多來源整合輸出
 - [ ] 圖片下載 & AI審核
 - [ ] 永慶/信義平台
 - [x] 數據存儲 (CSV)

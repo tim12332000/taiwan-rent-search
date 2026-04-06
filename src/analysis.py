@@ -47,6 +47,7 @@ KITCHEN_SINK_KEYWORDS = (
 ANALYSIS_FIELDNAMES = [
     "rank",
     "score",
+    "platform",
     "title",
     "price",
     "location_district",
@@ -430,6 +431,7 @@ def export_analysis_results(results: list[AnalysisResult], output_path: str | Pa
                 {
                     "rank": idx,
                     "score": result.score,
+                    "platform": result.row.get("platform", ""),
                     "title": result.row.get("title", ""),
                     "price": result.row.get("price", ""),
                     "location_district": result.row.get("location_district", ""),
@@ -449,6 +451,7 @@ def export_analysis_results(results: list[AnalysisResult], output_path: str | Pa
 
 
 def format_listing_line(result: AnalysisResult) -> str:
+    platform = result.row.get("platform", "unknown")
     district = result.row.get("location_district", "未知區域")
     area = result.row.get("location_area", "")
     price = result.row.get("price", "?")
@@ -457,7 +460,7 @@ def format_listing_line(result: AnalysisResult) -> str:
     kitchen = "已確認" if result.kitchen_sink_signal else "待確認" if result.needs_image_review else "無訊號"
     band = score_band(result.score)
     return (
-        f"**{band}級** | {district} | {area} | ${price}/月 | {floor_area}坪 | "
+        f"**{band}級** | {platform} | {district} | {area} | ${price}/月 | {floor_area}坪 | "
         f"通勤 {commute} 分 | 流理臺 {kitchen}"
     )
 
@@ -521,6 +524,7 @@ def render_markdown_report(
 def render_result_card(result: AnalysisResult) -> str:
     image_url = first_image_url(result)
     title = html.escape(result.row.get("title", ""))
+    platform = html.escape(result.row.get("platform", "unknown"))
     district = html.escape(result.row.get("location_district", "未知區域"))
     area_name = html.escape(result.row.get("location_area", ""))
     url = html.escape(result.row.get("url", ""))
@@ -547,6 +551,7 @@ def render_result_card(result: AnalysisResult) -> str:
       <div class="listing-body">
         <div class="listing-topline">
           <span class="band {badge_class}">{band}級</span>
+          <span class="score">來源 {platform}</span>
           <span class="score">分數 {result.score}</span>
           <span class="kitchen">流理臺 {html.escape(kitchen)}</span>
         </div>

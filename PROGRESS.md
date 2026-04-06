@@ -37,6 +37,12 @@
   - HTML 解析邏輯
   - 數據提取方法
 
+- [x] **MixRent 聚合爬蟲** (`src/scrapers/mixrent.py`)
+  - MixRentScraper 類
+  - 聚合搜尋結果解析
+  - 原始來源連結保留
+  - 台北市結果過濾
+
 - [x] **研究文檔** (`docs/research.md`)
   - 5個主流平台結構分析
   - 爬蟲難度評分
@@ -46,6 +52,7 @@
   - 抓取 591 台北市列表頁
   - 扁平化輸出為 CSV
   - 自動建立 `data/` 輸出路徑
+  - 支援多來源抓取與合併去重
 
 - [x] **條件分析核心** (`src/analysis.py`)
   - 從既有 CSV 讀取房源
@@ -57,7 +64,7 @@
 
 ### 測試代碼
 - [x] 創建 `tests/test_scrapers.py`
-- [x] 43個測試用例
+- [x] 51個測試用例
   - 數據模型測試
   - 爬蟲類初始化
   - User-Agent 輪換
@@ -65,6 +72,8 @@
   - 價格/位置解析
   - 離線 HTML 卡片解析
   - mock scrape 流程驗證
+  - MixRent 結構解析
+  - 多來源去重與整合輸出
   - CSV 匯出與 CLI 入口驗證
   - 條件分析與通勤估算驗證
   - Markdown shortlist 報告驗證
@@ -82,23 +91,25 @@
 7. ✅ **條件分析核心已完成** - 已可根據條件輸出候選清單與分析 CSV
 8. ✅ **快速瀏覽報告已完成** - 已可直接產出給人看的 shortlist Markdown
 9. ✅ **圖文穿插報告已完成** - 已可直接產出 `shortlist.html`
+10. ✅ **多來源整合已完成** - 已可合併 `591 + MixRent` 並輸出整合資料池
 
 ### 目前缺口
-1. ⏳ **只有單頁資料** - 尚未做 pagination 與跨頁去重
-2. ⏳ **欄位仍以列表頁為主** - `bathrooms`、`contact`、`floor` 等資訊仍多半缺失或推估
-3. ⏳ **缺少資料品質統計** - 尚未輸出 skipped rows、重複筆數、欄位完整率
-4. ⏳ **缺少 detail-page enrichment** - 需要第二階段補詳頁資料
-5. ⏳ **缺少長期抗 drift 測試** - 還沒保存真實 591 fixture 做回歸保護
-6. ⏳ **district 參數尚未接線** - 目前 API 簽名保留，但還沒映射到查詢條件
-7. ⏳ **圖片評分尚未接線** - 目前只能先做文字訊號與待看圖標記
-8. ⏳ **圖片品質仍未打分** - HTML 目前只做首圖展示，還沒有視覺評級
+1. ⏳ **只有單頁資料** - `591` 與 `MixRent` 尚未做 pagination
+2. ⏳ **來源數仍偏少** - 尚未接 `租租通`、`好房網`、`樂屋網`
+3. ⏳ **欄位仍以列表頁為主** - `bathrooms`、`contact`、`floor` 等資訊仍多半缺失或推估
+4. ⏳ **缺少資料品質統計** - 尚未輸出 skipped rows、重複筆數、欄位完整率
+5. ⏳ **缺少 detail-page enrichment** - 需要第二階段補詳頁資料
+6. ⏳ **缺少長期抗 drift 測試** - 還沒保存真實 fixture 做回歸保護
+7. ⏳ **district 參數尚未接線** - 目前 API 簽名保留，但還沒映射到查詢條件
+8. ⏳ **圖片評分尚未接線** - 目前只能先做文字訊號與待看圖標記
+9. ⏳ **圖片品質仍未打分** - HTML 目前只做首圖展示，還沒有視覺評級
 
 ## 📋 下一步工作
 
 ### 立即執行
 1. **重新產出一份資料檔**
    ```bash
-   python -m src.main --county 台北市
+   python -m src.main --county 台北市 --source 591 --source mixrent
    ```
 
 2. **依條件輸出候選清單**
@@ -126,10 +137,10 @@
    pytest tests/test_scrapers.py tests/test_analysis.py -v --cov=src
    ```
 
-7. **提交 HTML 報告功能**
+7. **提交多來源整合功能**
    ```bash
    git add .
-   git commit -m "加入圖文卡片式 shortlist HTML 報告"
+   git commit -m "加入 MixRent 爬蟲與多來源整合輸出"
    ```
 
 ### 在 Codex 中執行（推薦）
@@ -180,6 +191,7 @@ taiwan-rent-search/
 │       ├── __init__.py
 │       ├── base.py            ✅ 完成
 │       └── fang591.py         ✅ 完成
+│       └── mixrent.py         ✅ 完成
 ├── tests/
 │   ├── __init__.py
 │   └── test_scrapers.py       ✅ 完成（已驗證）
@@ -223,14 +235,15 @@ omx --madmax --high
 
 - 所有代碼已設置，邏輯就緒
 - 目前測試集共 40 個案例，已全數通過
-- 目前測試集共 43 個案例，已全數通過
+- 目前測試集共 51 個案例，已全數通過
 - 已產出第一份真實 CSV：`data/591_taipei_*.csv`
+- 已產出第一份多來源整合 CSV：`data/591-mixrent_taipei_*.csv`
 - 已可產出條件分析 CSV：`data/*analysis*.csv`
 - 已可產出人看報告：`data/*shortlist*.md`
 - 已可產出圖文報告：`data/*shortlist*.html`
 - 列表頁抓取已可工作，但仍是單頁版與列表欄位版
-- 覆蓋率驗證已通過，總覆蓋率為 81%
-- 下一步最有價值的是 pagination + 詳頁補強 + 圖片評分
+- 覆蓋率驗證已通過，總覆蓋率為 84%
+- 下一步最有價值的是第 3 個來源 + pagination + 詳頁補強
 
 ---
 

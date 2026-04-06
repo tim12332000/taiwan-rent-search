@@ -145,6 +145,7 @@ def test_analyze_listings_marks_unknown_feature_for_image_review(tmp_path):
 def test_export_analysis_results_writes_expected_columns(tmp_path):
     result = AnalysisResult(
         row={
+            "platform": "mixrent",
             "title": "可開伙套房",
             "price": "18000",
             "location_district": "信義區",
@@ -170,6 +171,7 @@ def test_export_analysis_results_writes_expected_columns(tmp_path):
 
     assert reader.fieldnames == ANALYSIS_FIELDNAMES
     assert rows[0]["rank"] == "1"
+    assert rows[0]["platform"] == "mixrent"
     assert rows[0]["kitchen_sink_signal"] == "yes"
 
 
@@ -182,6 +184,7 @@ def test_score_band_maps_scores_to_bands():
 def test_format_listing_line_contains_human_readable_summary():
     result = AnalysisResult(
         row={
+            "platform": "mixrent",
             "location_district": "信義區",
             "location_area": "松仁路",
             "price": "18000",
@@ -198,6 +201,7 @@ def test_format_listing_line_contains_human_readable_summary():
 
     line = format_listing_line(result)
     assert "A級" in line
+    assert "mixrent" in line
     assert "信義區" in line
     assert "通勤 8 分" in line
     assert "流理臺 已確認" in line
@@ -210,6 +214,7 @@ def test_render_markdown_report_groups_direct_and_review_items():
     )
     direct = AnalysisResult(
         row={
+            "platform": "mixrent",
             "title": "可開伙套房",
             "url": "https://rent.591.com.tw/1",
             "location_district": "信義區",
@@ -227,6 +232,7 @@ def test_render_markdown_report_groups_direct_and_review_items():
     )
     review = AnalysisResult(
         row={
+            "platform": "591",
             "title": "待確認套房",
             "url": "https://rent.591.com.tw/2",
             "location_district": "大安區",
@@ -256,6 +262,7 @@ def test_export_markdown_report_writes_file(tmp_path):
     criteria = SearchCriteria(destination_address="台北市信義區松仁路100號")
     result = AnalysisResult(
         row={
+            "platform": "mixrent",
             "title": "可開伙套房",
             "url": "https://rent.591.com.tw/1",
             "location_district": "信義區",
@@ -284,6 +291,7 @@ def test_render_html_report_contains_image_and_sections():
     criteria = SearchCriteria(destination_address="台北市信義區松仁路100號")
     result = AnalysisResult(
         row={
+            "platform": "mixrent",
             "title": "可開伙套房",
             "url": "https://rent.591.com.tw/1",
             "location_district": "信義區",
@@ -314,6 +322,7 @@ def test_export_html_report_writes_file(tmp_path):
     criteria = SearchCriteria(destination_address="台北市信義區松仁路100號")
     result = AnalysisResult(
         row={
+            "platform": "mixrent",
             "title": "可開伙套房",
             "url": "https://rent.591.com.tw/1",
             "location_district": "信義區",
@@ -338,6 +347,7 @@ def test_export_html_report_writes_file(tmp_path):
     assert "<html" in text.lower()
     assert "可開伙套房" in text
     assert "https://img/1.jpg" in text
+    assert "來源 mixrent" in text
 
 
 def test_resolve_destination_falls_back_to_district_center_when_geocode_missing():

@@ -12,9 +12,20 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.models import HousingData, Location, Contact
-from src.main import CSV_FIELDNAMES, build_output_path, export_to_csv, main as main_entry, sanitize_csv_value, scrape_to_csv
+from src.main import (
+    CSV_FIELDNAMES,
+    build_output_path,
+    build_multi_source_output_path,
+    dedupe_records,
+    export_to_csv,
+    main as main_entry,
+    sanitize_csv_value,
+    scrape_sources_to_csv,
+    scrape_to_csv,
+)
 from src.scrapers.base import BaseScraper
 from src.scrapers.fang591 import Fang591Scraper
+from src.scrapers.mixrent import MixRentScraper
 
 
 class DummyScraper(BaseScraper):
@@ -403,6 +414,109 @@ class TestFang591Scraper:
         assert result[1].floor_area == 35.0
 
 
+class TestMixRentScraper:
+    """測試 MixRent 聚合爬蟲。"""
+
+    def test_scraper_initialization(self):
+        scraper = MixRentScraper()
+        assert scraper.name == "MixRent"
+        assert scraper.delay == 1.5
+
+    def test_build_search_url(self):
+        scraper = MixRentScraper()
+        url = scraper._build_search_url("台北市信義區")
+        assert "mixrent" in url
+        assert "q=" in url
+
+    def test_parse_item_extracts_core_fields(self):
+        scraper = MixRentScraper()
+        item = scraper._parse_html(
+            """
+            <div class="rental_result">
+              <div class="row">
+                <div class="col-xs-12 col-sm-10">
+                  <a class="house_title" href="https://www.dd-room.com/object/abc" name="租租通">台北市士林區共生住宅</a>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-sm-2 col-sm-push-10">
+                  <ul class="list-inline feature_list">
+                    <li><span class="label label-success"><strong>50</strong> 坪</span></li>
+                    <li><span class="label label-primary">$ <strong>13000</strong></span></li>
+                  </ul>
+                </div>
+                <div class="col-sm-10 col-sm-pull-2">
+                  <div class="house_address">台北市士林區大南路</div>
+                  <div class="house_description">有廚房 2房 1衛 5F/12F</div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-xs-12 col-sm-10">
+                  <div class="house_url"><small>租租通 - https://www.dd-room.com/object/abc</small></div>
+                </div>
+              </div>
+            </div>
+            """
+        ).find("div", class_="rental_result")
+
+        data = scraper._parse_item(item)
+
+        assert data is not None
+        assert data.title == "台北市士林區共生住宅"
+        assert data.price == 13000
+        assert data.location.county == "台北市"
+        assert data.location.district == "士林區"
+        assert data.location.area == "大南路"
+        assert data.floor_area == 50.0
+        assert data.room_type == "2房"
+        assert data.bedrooms == 2
+        assert data.bathrooms == 1
+        assert data.floor == "5F/12F"
+        assert data.contact.name == "租租通"
+
+    def test_scrape_parses_mocked_response(self, monkeypatch):
+        scraper = MixRentScraper()
+        html = """
+        <div class="rental_result">
+          <div class="row"><div class="col-xs-12 col-sm-10"><a class="house_title" href="https://example.com/1" name="來源A">士林區好房</a></div></div>
+          <div class="row">
+            <div class="col-sm-2 col-sm-push-10"><ul class="list-inline feature_list"><li><span class="label label-success"><strong>10</strong> 坪</span></li><li><span class="label label-primary">$ <strong>10000</strong></span></li></ul></div>
+            <div class="col-sm-10 col-sm-pull-2"><div class="house_address">台北市士林區文林路</div><div class="house_description">可開伙 1房 1衛</div></div>
+          </div>
+        </div>
+        <div class="rental_result">
+          <div class="row"><div class="col-xs-12 col-sm-10"><a class="house_title" href="https://example.com/2" name="來源B">大安區好房</a></div></div>
+          <div class="row">
+            <div class="col-sm-2 col-sm-push-10"><ul class="list-inline feature_list"><li><span class="label label-success"><strong>20</strong> 坪</span></li><li><span class="label label-primary">$ <strong>20000</strong></span></li></ul></div>
+            <div class="col-sm-10 col-sm-pull-2"><div class="house_address">台北市大安區和平東路</div><div class="house_description">2房 1衛</div></div>
+          </div>
+        </div>
+        """
+
+        monkeypatch.setattr(scraper, "_fetch_url", lambda url, **kwargs: SimpleNamespace(text=html))
+        result = scraper.scrape(county="台北市")
+
+        assert len(result) == 2
+        assert result[0].location.district == "士林區"
+        assert result[1].location.district == "大安區"
+
+    def test_parse_item_rejects_non_taipei_listing(self):
+        scraper = MixRentScraper()
+        item = scraper._parse_html(
+            """
+            <div class="rental_result">
+              <div class="row"><div class="col-xs-12 col-sm-10"><a class="house_title" href="https://example.com/1" name="來源A">竹北租屋透天電梯住店鄰近生醫園區高鐵站</a></div></div>
+              <div class="row">
+                <div class="col-sm-2 col-sm-push-10"><ul class="list-inline feature_list"><li><span class="label label-success"><strong>40</strong> 坪</span></li><li><span class="label label-primary">$ <strong>26000</strong></span></li></ul></div>
+                <div class="col-sm-10 col-sm-pull-2"><div class="house_address">新竹縣竹北市嘉豐十路</div><div class="house_description">高鐵站旁 2房 1衛</div></div>
+              </div>
+            </div>
+            """
+        ).find("div", class_="rental_result")
+
+        assert scraper._parse_item(item) is None
+
+
 class TestCsvExport:
     """測試 CSV 匯出流程。"""
 
@@ -485,6 +599,12 @@ class TestCsvExport:
         assert path.name.startswith("591_taipei_")
         assert path.suffix == ".csv"
 
+    def test_build_multi_source_output_path_uses_source_slug(self):
+        path = build_multi_source_output_path("台北市", ["mixrent", "591"])
+        assert path.parent.name == "data"
+        assert "591-mixrent_taipei_" in path.name
+        assert path.suffix == ".csv"
+
     def test_scrape_to_csv_writes_records_with_mocked_scraper(self, monkeypatch, tmp_path):
         records = self._sample_records()
 
@@ -511,6 +631,27 @@ class TestCsvExport:
 
         assert "CSV exported:" in out
         assert "Records: 2" in out
+
+    def test_dedupe_records_keeps_unique_url_title_price(self):
+        records = self._sample_records()
+        duplicate = self._sample_records()[0]
+        deduped = dedupe_records(records + [duplicate])
+
+        assert len(deduped) == 2
+
+    def test_scrape_sources_to_csv_writes_combined_records(self, monkeypatch, tmp_path):
+        mixrent_records = [self._sample_records()[0]]
+        rent591_records = [self._sample_records()[1]]
+
+        monkeypatch.setattr(Fang591Scraper, "scrape", lambda self, county="": rent591_records)
+        monkeypatch.setattr(MixRentScraper, "scrape", lambda self, county="台北市", district="", query="": mixrent_records)
+
+        output = tmp_path / "combined.csv"
+        path, written_records = scrape_sources_to_csv(["591", "mixrent"], "台北市", output_path=output, delay=0)
+
+        assert path == output
+        assert len(written_records) == 2
+        assert output.exists()
 
 
 class TestLocationAndContact:
