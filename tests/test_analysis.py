@@ -25,6 +25,7 @@ from src.analysis import (
     render_markdown_report,
     resolve_destination,
     score_band,
+    summarize_results,
 )
 
 
@@ -175,6 +176,41 @@ def test_export_analysis_results_writes_expected_columns(tmp_path):
     assert rows[0]["kitchen_sink_signal"] == "yes"
 
 
+def test_summarize_results_counts_platforms_and_prices():
+    results = [
+        AnalysisResult(
+            row={"platform": "591", "price": "10000", "images": "https://img/1.jpg"},
+            score=90,
+            commute_bike_minutes=8,
+            commute_metro_minutes=12,
+            commute_best_minutes=8,
+            kitchen_sink_signal=True,
+            needs_image_review=False,
+            matched_reasons=[],
+        ),
+        AnalysisResult(
+            row={"platform": "mixrent", "price": "20000", "images": ""},
+            score=70,
+            commute_bike_minutes=None,
+            commute_metro_minutes=None,
+            commute_best_minutes=None,
+            kitchen_sink_signal=False,
+            needs_image_review=True,
+            matched_reasons=[],
+        ),
+    ]
+
+    summary = summarize_results(results)
+
+    assert summary.total == 2
+    assert summary.direct_count == 1
+    assert summary.review_count == 1
+    assert summary.kitchen_confirmed_count == 1
+    assert summary.with_images_count == 1
+    assert summary.average_price == 15000
+    assert summary.platform_counts == {"591": 1, "mixrent": 1}
+
+
 def test_score_band_maps_scores_to_bands():
     assert score_band(95) == "A"
     assert score_band(80) == "B"
@@ -256,6 +292,7 @@ def test_render_markdown_report_groups_direct_and_review_items():
     assert "## 待看圖確認" in report
     assert "可開伙套房" in report
     assert "待確認套房" in report
+    assert "來源分布" in report
 
 
 def test_export_markdown_report_writes_file(tmp_path):
@@ -316,6 +353,7 @@ def test_render_html_report_contains_image_and_sections():
     assert "直接看" in report
     assert "https://img/1.jpg" in report
     assert "可開伙套房" in report
+    assert "來源分布" in report
 
 
 def test_export_html_report_writes_file(tmp_path):

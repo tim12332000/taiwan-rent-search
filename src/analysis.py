@@ -107,6 +107,17 @@ class AnalysisResult:
     matched_reasons: list[str]
 
 
+@dataclass
+class ResultSummary:
+    total: int
+    direct_count: int
+    review_count: int
+    kitchen_confirmed_count: int
+    with_images_count: int
+    average_price: int | None
+    platform_counts: dict[str, int]
+
+
 class NominatimGeocoder:
     """以 Nominatim geocode 地址，並使用本地 cache 減少請求。"""
 
@@ -478,12 +489,19 @@ def render_markdown_report(
 ) -> str:
     direct = [result for result in results if not result.needs_image_review]
     review = [result for result in results if result.needs_image_review]
+    summary = summarize_results(results)
 
     lines = [
         "# 租屋快速瀏覽報告",
         "",
         f"- 來源資料: `{Path(input_path).name}`",
         f"- 候選總數: `{len(results)}`",
+        f"- 直接看: `{summary.direct_count}`",
+        f"- 待看圖確認: `{summary.review_count}`",
+        f"- 有流理臺訊號: `{summary.kitchen_confirmed_count}`",
+        f"- 有圖片: `{summary.with_images_count}`",
+        f"- 平均月租: `{summary.average_price if summary.average_price is not None else '未統計'}`",
+        f"- 來源分布: `{', '.join(f'{k}:{v}' for k, v in summary.platform_counts.items())}`",
         f"- 目的地: `{criteria.destination_address or '未指定'}`",
         f"- 通勤模式: `{criteria.transport_mode}`",
         f"- 最長通勤: `{criteria.max_commute_minutes if criteria.max_commute_minutes is not None else '未限制'}`",
@@ -572,6 +590,8 @@ def render_html_report(
 ) -> str:
     direct = [result for result in results if not result.needs_image_review]
     review = [result for result in results if result.needs_image_review]
+    summary = summarize_results(results)
+    platform_text = " / ".join(f"{name}: {count}" for name, count in summary.platform_counts.items()) or "無"
 
     def section_html(title: str, items: list[AnalysisResult], empty_text: str) -> str:
         if not items:
@@ -721,6 +741,10 @@ def render_html_report(
       <ul>
         <li>來源資料：{html.escape(Path(input_path).name)}</li>
         <li>候選總數：{len(results)}</li>
+        <li>直接看：{summary.direct_count}　待看圖確認：{summary.review_count}</li>
+        <li>有流理臺訊號：{summary.kitchen_confirmed_count}　有圖片：{summary.with_images_count}</li>
+        <li>平均月租：{summary.average_price if summary.average_price is not None else '未統計'} 元</li>
+        <li>來源分布：{html.escape(platform_text)}</li>
         <li>目的地：{html.escape(criteria.destination_address or "未指定")}</li>
         <li>通勤模式：{html.escape(criteria.transport_mode)}</li>
         <li>最長通勤：{criteria.max_commute_minutes if criteria.max_commute_minutes is not None else "未限制"}</li>
@@ -733,6 +757,41 @@ def render_html_report(
 </body>
 </html>
 """
+
+
+def summarize_results(results: list[AnalysisResult]) -> ResultSummary:
+    prices = []
+    platform_counts: dict[str, int] = {}
+    with_images_count = 0
+    kitchen_confirmed_count = 0
+    direct_count = 0
+    review_count = 0
+
+    for result in results:
+        if result.row.get("price"):
+            prices.append(int(float(result.row["price"])))
+        platform = result.row.get("platform", "unknown") or "unknown"
+        platform_counts[platform] = platform_counts.get(platform, 0) + 1
+        if parse_images(result.row.get("images")):
+            with_images_count += 1
+        if result.kitchen_sink_signal:
+            kitchen_confirmed_count += 1
+        if result.needs_image_review:
+            review_count += 1
+        else:
+            direct_count += 1
+
+    average_price = round(sum(prices) / len(prices)) if prices else None
+
+    return ResultSummary(
+        total=len(results),
+        direct_count=direct_count,
+        review_count=review_count,
+        kitchen_confirmed_count=kitchen_confirmed_count,
+        with_images_count=with_images_count,
+        average_price=average_price,
+        platform_counts=dict(sorted(platform_counts.items())),
+    )
 
 
 def export_markdown_report(
