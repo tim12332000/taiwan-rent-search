@@ -44,3 +44,4 @@ venv.bak/
 data/downloads/
 data/*.csv
 data/*.md
+data/*.html

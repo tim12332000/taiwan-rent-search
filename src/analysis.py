@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import html
 import json
 import math
 import time
@@ -411,6 +412,12 @@ def build_report_output_path(input_path: str | Path) -> Path:
     return Path("data") / f"{stem}_shortlist_{timestamp}.md"
 
 
+def build_html_output_path(input_path: str | Path) -> Path:
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    stem = Path(input_path).stem
+    return Path("data") / f"{stem}_shortlist_{timestamp}.html"
+
+
 def export_analysis_results(results: list[AnalysisResult], output_path: str | Path) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -453,6 +460,11 @@ def format_listing_line(result: AnalysisResult) -> str:
         f"**{band}級** | {district} | {area} | ${price}/月 | {floor_area}坪 | "
         f"通勤 {commute} 分 | 流理臺 {kitchen}"
     )
+
+
+def first_image_url(result: AnalysisResult) -> str | None:
+    images = parse_images(result.row.get("images"))
+    return images[0] if images else None
 
 
 def render_markdown_report(
@@ -506,6 +518,217 @@ def render_markdown_report(
     return "\n".join(lines) + "\n"
 
 
+def render_result_card(result: AnalysisResult) -> str:
+    image_url = first_image_url(result)
+    title = html.escape(result.row.get("title", ""))
+    district = html.escape(result.row.get("location_district", "未知區域"))
+    area_name = html.escape(result.row.get("location_area", ""))
+    url = html.escape(result.row.get("url", ""))
+    price = html.escape(result.row.get("price", "?"))
+    floor_area = html.escape(result.row.get("floor_area", "") or "?")
+    commute = str(result.commute_best_minutes) if result.commute_best_minutes is not None else "n/a"
+    kitchen = "已確認" if result.kitchen_sink_signal else "待確認" if result.needs_image_review else "無訊號"
+    reason_text = html.escape("；".join(result.matched_reasons))
+    band = score_band(result.score)
+    badge_class = f"band-{band.lower()}"
+    review_class = "needs-review" if result.needs_image_review else "direct"
+
+    image_html = (
+        f'<img src="{html.escape(image_url)}" alt="{title}" loading="lazy" />'
+        if image_url
+        else '<div class="image-placeholder">無圖片</div>'
+    )
+
+    return f"""
+    <article class="listing-card {review_class}">
+      <div class="listing-image">
+        {image_html}
+      </div>
+      <div class="listing-body">
+        <div class="listing-topline">
+          <span class="band {badge_class}">{band}級</span>
+          <span class="score">分數 {result.score}</span>
+          <span class="kitchen">流理臺 {html.escape(kitchen)}</span>
+        </div>
+        <h3>{title}</h3>
+        <p class="meta">{district} / {area_name} / ${price} / {floor_area}坪 / 通勤 {commute} 分</p>
+        <p class="reason">{reason_text}</p>
+        <p class="link"><a href="{url}" target="_blank" rel="noreferrer">查看原始房源</a></p>
+      </div>
+    </article>
+    """
+
+
+def render_html_report(
+    results: list[AnalysisResult],
+    criteria: SearchCriteria,
+    input_path: str | Path,
+) -> str:
+    direct = [result for result in results if not result.needs_image_review]
+    review = [result for result in results if result.needs_image_review]
+
+    def section_html(title: str, items: list[AnalysisResult], empty_text: str) -> str:
+        if not items:
+            return f"<section><h2>{html.escape(title)}</h2><p class='empty'>{html.escape(empty_text)}</p></section>"
+        cards = "\n".join(render_result_card(item) for item in items)
+        return f"<section><h2>{html.escape(title)}</h2><div class='listing-grid'>{cards}</div></section>"
+
+    return f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>租屋快速瀏覽報告</title>
+  <style>
+    :root {{
+      --bg: #f5f1e8;
+      --card: #fffaf2;
+      --ink: #1f2a2a;
+      --muted: #5b675f;
+      --line: #d8ccb8;
+      --accent: #0f766e;
+      --accent-2: #c2410c;
+      --a: #14532d;
+      --b: #854d0e;
+      --c: #991b1b;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, #fff4d8 0, transparent 30%),
+        radial-gradient(circle at bottom right, #d7efe8 0, transparent 28%),
+        var(--bg);
+    }}
+    .page {{
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }}
+    .hero {{
+      background: linear-gradient(135deg, rgba(15,118,110,.12), rgba(194,65,12,.08));
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 14px 30px rgba(31,42,42,.08);
+    }}
+    .hero h1 {{ margin: 0 0 12px; font-size: 34px; }}
+    .hero p, .hero li {{ color: var(--muted); line-height: 1.6; }}
+    .hero ul {{ margin: 0; padding-left: 20px; }}
+    section {{ margin-top: 28px; }}
+    h2 {{ margin-bottom: 14px; font-size: 24px; }}
+    .listing-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 18px;
+    }}
+    .listing-card {{
+      display: grid;
+      grid-template-columns: 1fr;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: 0 10px 24px rgba(31,42,42,.08);
+    }}
+    .listing-image {{
+      background: #e6ddd0;
+      min-height: 220px;
+    }}
+    .listing-image img {{
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 220px;
+      object-fit: cover;
+      background: #e6ddd0;
+    }}
+    .image-placeholder {{
+      min-height: 220px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      letter-spacing: .08em;
+    }}
+    .listing-body {{
+      padding: 18px;
+      display: grid;
+      gap: 10px;
+    }}
+    .listing-topline {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      font-size: 13px;
+    }}
+    .band, .score, .kitchen {{
+      border-radius: 999px;
+      padding: 5px 10px;
+      background: #efe7d8;
+      color: var(--muted);
+    }}
+    .band-a {{ background: rgba(20,83,45,.12); color: var(--a); }}
+    .band-b {{ background: rgba(133,77,14,.12); color: var(--b); }}
+    .band-c {{ background: rgba(153,27,27,.12); color: var(--c); }}
+    .listing-body h3 {{
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.35;
+    }}
+    .meta {{
+      margin: 0;
+      font-size: 15px;
+      color: var(--accent);
+      font-weight: 700;
+    }}
+    .reason {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }}
+    .link a {{
+      color: var(--accent-2);
+      font-weight: 700;
+      text-decoration: none;
+    }}
+    .empty {{
+      color: var(--muted);
+      background: rgba(255,255,255,.6);
+      padding: 18px;
+      border-radius: 14px;
+      border: 1px dashed var(--line);
+    }}
+    @media (max-width: 720px) {{
+      .hero h1 {{ font-size: 28px; }}
+      .listing-image, .listing-image img, .image-placeholder {{ min-height: 180px; }}
+    }}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <h1>租屋快速瀏覽報告</h1>
+      <ul>
+        <li>來源資料：{html.escape(Path(input_path).name)}</li>
+        <li>候選總數：{len(results)}</li>
+        <li>目的地：{html.escape(criteria.destination_address or "未指定")}</li>
+        <li>通勤模式：{html.escape(criteria.transport_mode)}</li>
+        <li>最長通勤：{criteria.max_commute_minutes if criteria.max_commute_minutes is not None else "未限制"}</li>
+        <li>流理臺需求：{"需要" if criteria.require_kitchen_sink else "未要求"}</li>
+      </ul>
+    </header>
+    {section_html("直接看", direct, "目前沒有完全符合且已確認必要條件的物件。")}
+    {section_html("待看圖確認", review, "目前沒有需要額外看圖確認的物件。")}
+  </main>
+</body>
+</html>
+"""
+
+
 def export_markdown_report(
     results: list[AnalysisResult],
     criteria: SearchCriteria,
@@ -515,6 +738,19 @@ def export_markdown_report(
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     report = render_markdown_report(results, criteria, input_path)
+    path.write_text(report, encoding="utf-8")
+    return path
+
+
+def export_html_report(
+    results: list[AnalysisResult],
+    criteria: SearchCriteria,
+    input_path: str | Path,
+    output_path: str | Path,
+) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    report = render_html_report(results, criteria, input_path)
     path.write_text(report, encoding="utf-8")
     return path
 
@@ -537,6 +773,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--transport-mode", choices=["either", "metro", "bike"], default="either")
     parser.add_argument("--top", type=int, default=10, help="輸出前幾筆")
     parser.add_argument("--report-output", help="輸出 Markdown 報告路徑")
+    parser.add_argument("--html-output", help="輸出 HTML 報告路徑")
     return parser.parse_args()
 
 
@@ -564,11 +801,14 @@ def main() -> None:
     top_results = results[: criteria.top_k]
     output_path = Path(args.output) if args.output else build_analysis_output_path(input_path)
     report_path = Path(args.report_output) if args.report_output else build_report_output_path(input_path)
+    html_path = Path(args.html_output) if args.html_output else build_html_output_path(input_path)
     export_analysis_results(top_results, output_path)
     export_markdown_report(top_results, criteria, input_path, report_path)
+    export_html_report(top_results, criteria, input_path, html_path)
 
     print(f"Analysis CSV: {output_path}")
     print(f"Shortlist report: {report_path}")
+    print(f"HTML report: {html_path}")
     print(f"Matched listings: {len(results)}")
     for idx, result in enumerate(top_results, 1):
         print(

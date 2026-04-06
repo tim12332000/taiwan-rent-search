@@ -12,13 +12,16 @@ from src.analysis import (
     SearchCriteria,
     analyze_listings,
     build_analysis_output_path,
+    build_html_output_path,
     build_report_output_path,
     extract_district_from_text,
     export_analysis_results,
+    export_html_report,
     export_markdown_report,
     format_listing_line,
     has_kitchen_sink_signal,
     latest_dataset_path,
+    render_html_report,
     render_markdown_report,
     resolve_destination,
     score_band,
@@ -277,6 +280,66 @@ def test_export_markdown_report_writes_file(tmp_path):
     assert "可開伙套房" in text
 
 
+def test_render_html_report_contains_image_and_sections():
+    criteria = SearchCriteria(destination_address="台北市信義區松仁路100號")
+    result = AnalysisResult(
+        row={
+            "title": "可開伙套房",
+            "url": "https://rent.591.com.tw/1",
+            "location_district": "信義區",
+            "location_area": "松仁路",
+            "price": "18000",
+            "floor_area": "12",
+            "images": "https://img/1.jpg,https://img/2.jpg",
+        },
+        score=95,
+        commute_bike_minutes=8,
+        commute_metro_minutes=12,
+        commute_best_minutes=8,
+        kitchen_sink_signal=True,
+        needs_image_review=False,
+        matched_reasons=["estimated commute 8 min"],
+    )
+
+    report = render_html_report([result], criteria, "data/sample.csv")
+
+    assert "<!doctype html>" in report.lower()
+    assert "租屋快速瀏覽報告" in report
+    assert "直接看" in report
+    assert "https://img/1.jpg" in report
+    assert "可開伙套房" in report
+
+
+def test_export_html_report_writes_file(tmp_path):
+    criteria = SearchCriteria(destination_address="台北市信義區松仁路100號")
+    result = AnalysisResult(
+        row={
+            "title": "可開伙套房",
+            "url": "https://rent.591.com.tw/1",
+            "location_district": "信義區",
+            "location_area": "松仁路",
+            "price": "18000",
+            "floor_area": "12",
+            "images": "https://img/1.jpg",
+        },
+        score=95,
+        commute_bike_minutes=8,
+        commute_metro_minutes=12,
+        commute_best_minutes=8,
+        kitchen_sink_signal=True,
+        needs_image_review=False,
+        matched_reasons=["estimated commute 8 min"],
+    )
+    output = tmp_path / "shortlist.html"
+
+    export_html_report([result], criteria, "data/sample.csv", output)
+
+    text = output.read_text(encoding="utf-8")
+    assert "<html" in text.lower()
+    assert "可開伙套房" in text
+    assert "https://img/1.jpg" in text
+
+
 def test_resolve_destination_falls_back_to_district_center_when_geocode_missing():
     criteria = SearchCriteria(destination_address="台北市信義區松仁路100號")
 
@@ -301,6 +364,13 @@ def test_build_report_output_path_uses_input_stem():
     path = build_report_output_path("data/591_taipei_20260406_022332.csv")
     assert path.parent.name == "data"
     assert path.name.startswith("591_taipei_20260406_022332_shortlist_")
+
+
+def test_build_html_output_path_uses_input_stem():
+    path = build_html_output_path("data/591_taipei_20260406_022332.csv")
+    assert path.parent.name == "data"
+    assert path.name.startswith("591_taipei_20260406_022332_shortlist_")
+    assert path.suffix == ".html"
 
 
 def test_latest_dataset_path_picks_newest_file(tmp_path):
