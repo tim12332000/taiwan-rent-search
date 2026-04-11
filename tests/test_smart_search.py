@@ -3,7 +3,8 @@ from pathlib import Path
 from src.smart_search import build_open_url, refresh_search_for_destination
 
 
-def test_build_open_url_includes_destination_query():
+def test_build_open_url_includes_destination_query(monkeypatch):
+    monkeypatch.setattr("src.smart_search.resolve_running_local_site_base_url", lambda: None)
     url = build_open_url("台北市信義區松仁路100號")
 
     assert "search_app.html" in url

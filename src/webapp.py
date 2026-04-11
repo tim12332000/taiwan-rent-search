@@ -400,6 +400,37 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       font: inherit;
       font-weight: 700;
     }}
+    .review-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }}
+    .review-actions button {{
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+    }}
+    .review-actions .shortlist {{
+      border-color: rgba(20,83,45,.3);
+      color: #14532d;
+      background: rgba(20,83,45,.08);
+    }}
+    .review-actions .skip {{
+      border-color: rgba(153,27,27,.24);
+      color: #991b1b;
+      background: rgba(153,27,27,.08);
+    }}
+    .review-note {{
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }}
     .gallery-modal {{
       position: fixed;
       inset: 0;
@@ -624,8 +655,10 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     }};
     const SEARCH_SPEED_BUDGET_MS = {SEARCH_SPEED_BUDGET_MS};
     const SEARCH_SPEED_WARNING_MS = {SEARCH_SPEED_WARNING_MS};
+    const REVIEW_STORAGE_KEY = 'taiwan-rent-search.review-decisions';
     let filterFrame = null;
     let galleryState = null;
+    let reviewDecisions = {{}};
 
     const uniqueValues = (key) => [...new Set(listings.map(item => item[key]).filter(Boolean))].sort();
     const districts = uniqueValues('district');
@@ -812,6 +845,12 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const galleryButton = item.images && item.images.length
         ? `<button type="button" data-gallery-id="${{item.id}}">看圖 ${{item.images.length}} 張</button>`
         : '';
+      const reviewStatus = reviewDecisions[item.id] || '';
+      const reviewNote = reviewStatus === 'shortlist'
+        ? '已標記：不錯，之後優先回看。'
+        : reviewStatus === 'skip'
+          ? '已標記：先略過，避免重複查看。'
+          : '尚未標記。';
       const rules = item.detail_rules ? `<div class="rule">守則：${{item.detail_rules}}</div>` : '';
       const facilities = item.detail_facilities ? `<div class="facility">設備：${{item.detail_facilities}}</div>` : '';
       return `
@@ -833,6 +872,12 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
             ${{rules}}
             ${{facilities}}
             <div class="gallery-actions">${{galleryButton}}</div>
+            <div class="review-actions">
+              <button class="shortlist" type="button" data-review-id="${{item.id}}" data-review-status="shortlist">不錯</button>
+              <button class="skip" type="button" data-review-id="${{item.id}}" data-review-status="skip">先略過</button>
+              <button type="button" data-review-id="${{item.id}}" data-review-status="clear">清除標記</button>
+            </div>
+            <div class="review-note">${{reviewNote}}</div>
             <div class="actions"><a href="${{item.url}}" target="_blank" rel="noreferrer">查看原始房源</a></div>
           </div>
         </article>
@@ -873,6 +918,33 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const imageCount = galleryState.item.images.length;
       galleryState.index = (galleryState.index + delta + imageCount) % imageCount;
       renderGallery();
+    }}
+
+    function loadReviewDecisions() {{
+      try {{
+        const raw = window.localStorage.getItem(REVIEW_STORAGE_KEY);
+        reviewDecisions = raw ? JSON.parse(raw) : {{}};
+      }} catch (_error) {{
+        reviewDecisions = {{}};
+      }}
+    }}
+
+    function saveReviewDecisions() {{
+      try {{
+        window.localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(reviewDecisions));
+      }} catch (_error) {{
+        // Ignore storage failures and keep the page usable.
+      }}
+    }}
+
+    function setReviewDecision(listingId, status) {{
+      if (status === 'clear') {{
+        delete reviewDecisions[listingId];
+      }} else {{
+        reviewDecisions[listingId] = status;
+      }}
+      saveReviewDecisions();
+      scheduleApplyFilters();
     }}
 
     function calculateSearchSpeedScore(durationMs) {{
@@ -989,6 +1061,14 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     [els.q, els.destination, els.district, els.platform, els.maxPrice, els.minArea, els.cookingLevel, els.hasImages, els.sortBy]
       .forEach(el => el.addEventListener('input', scheduleApplyFilters));
     els.results.addEventListener('click', (event) => {{
+      const reviewTrigger = event.target.closest('[data-review-id]');
+      if (reviewTrigger) {{
+        setReviewDecision(
+          reviewTrigger.getAttribute('data-review-id'),
+          reviewTrigger.getAttribute('data-review-status'),
+        );
+        return;
+      }}
       const trigger = event.target.closest('[data-gallery-id]');
       if (!trigger) return;
       openGallery(trigger.getAttribute('data-gallery-id'));
@@ -1008,6 +1088,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       if (event.key === 'ArrowLeft') moveGallery(-1);
       if (event.key === 'ArrowRight') moveGallery(1);
     }});
+    loadReviewDecisions();
     applyFilters();
   </script>
 </body>

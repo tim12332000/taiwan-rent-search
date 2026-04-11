@@ -191,6 +191,13 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "看圖審核" in html_text
     assert "全部重設" in html_text
     assert "applyPreset" in html_text
+    assert "REVIEW_STORAGE_KEY" in html_text
+    assert "loadReviewDecisions" in html_text
+    assert "setReviewDecision" in html_text
+    assert "不錯" in html_text
+    assert "先略過" in html_text
+    assert "清除標記" in html_text
+    assert "尚未標記" in html_text
     assert "data-gallery-id" in html_text
     assert "看圖 ${item.images.length} 張" in html_text
     assert "搜尋速度" in html_text
