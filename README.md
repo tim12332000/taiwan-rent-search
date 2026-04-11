@@ -79,15 +79,15 @@ python -m src.main --county 台北市 --source 591 --source mixrent --source hou
 python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3 --enrich-591-details --detail-limit 5
 
 # 依條件分析 CSV 並輸出候選清單
-python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-kitchen-sink --top 5
+python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-cooking-friendly --top 5
 
 # 產出給人快速瀏覽的 shortlist 報告
 # 會同時輸出 analysis.csv + shortlist.md
-python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-kitchen-sink --top 10
+python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-cooking-friendly --top 10
 
 # 產出圖文穿插的 HTML 報告
 # 會同時輸出 analysis.csv + shortlist.md + shortlist.html
-python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-kitchen-sink --top 10
+python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-cooking-friendly --top 10
 
 # 產出本地即時搜尋網站
 python -m src.webapp --input data\\591-ddroom-housefun-mixrent_taipei_20260406_233623.csv

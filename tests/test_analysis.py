@@ -228,6 +228,8 @@ def test_export_analysis_results_writes_expected_columns(tmp_path):
     assert reader.fieldnames == ANALYSIS_FIELDNAMES
     assert rows[0]["rank"] == "1"
     assert rows[0]["platform"] == "mixrent"
+    assert rows[0]["cooking_convenience_score"] == "2"
+    assert rows[0]["cooking_convenience_label"] == "可勉強煮"
     assert rows[0]["kitchen_sink_signal"] == "yes"
 
 
@@ -501,3 +503,14 @@ def test_latest_dataset_path_skips_analysis_outputs(tmp_path):
     analysis.touch()
 
     assert latest_dataset_path(tmp_path) == source
+
+
+def test_parse_args_supports_require_cooking_friendly_alias(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["src.analysis", "--require-cooking-friendly"],
+    )
+
+    args = __import__("src.analysis", fromlist=["parse_args"]).parse_args()
+
+    assert args.require_cooking_friendly is True

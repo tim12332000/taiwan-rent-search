@@ -95,6 +95,8 @@ ANALYSIS_FIELDNAMES = [
     "commute_best_minutes",
     "commute_bike_minutes",
     "commute_metro_minutes",
+    "cooking_convenience_score",
+    "cooking_convenience_label",
     "kitchen_sink_signal",
     "needs_image_review",
     "matched_reasons",
@@ -532,6 +534,7 @@ def export_analysis_results(results: list[AnalysisResult], output_path: str | Pa
         writer = csv.DictWriter(handle, fieldnames=ANALYSIS_FIELDNAMES)
         writer.writeheader()
         for idx, result in enumerate(results, 1):
+            cooking_score, cooking_label = cooking_convenience_for_result(result)
             writer.writerow(
                 {
                     "rank": idx,
@@ -545,6 +548,8 @@ def export_analysis_results(results: list[AnalysisResult], output_path: str | Pa
                     "commute_best_minutes": result.commute_best_minutes or "",
                     "commute_bike_minutes": result.commute_bike_minutes or "",
                     "commute_metro_minutes": result.commute_metro_minutes or "",
+                    "cooking_convenience_score": cooking_score,
+                    "cooking_convenience_label": cooking_label,
                     "kitchen_sink_signal": "yes" if result.kitchen_sink_signal else "no",
                     "needs_image_review": "yes" if result.needs_image_review else "no",
                     "matched_reasons": " | ".join(result.matched_reasons),
@@ -926,6 +931,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--require-keyword", action="append", default=[], help="必須出現在文本中的關鍵字")
     parser.add_argument("--exclude-keyword", action="append", default=[], help="排除關鍵字")
     parser.add_argument("--require-kitchen-sink", action="store_true", help="優先找較適合煮飯的物件；文字不夠明確時標成看圖確認")
+    parser.add_argument("--require-cooking-friendly", action="store_true", help="`--require-kitchen-sink` 的較直覺別名：優先找較適合煮飯的物件")
     parser.add_argument("--strict-features", action="store_true", help="必要設施未確認時直接排除")
     parser.add_argument("--max-commute", type=int, help="最長可接受通勤分鐘數")
     parser.add_argument("--transport-mode", choices=["either", "metro", "bike"], default="either")
@@ -957,7 +963,7 @@ def main() -> None:
         districts=args.district,
         required_keywords=args.require_keyword,
         excluded_keywords=args.exclude_keyword,
-        require_kitchen_sink=args.require_kitchen_sink,
+        require_kitchen_sink=args.require_kitchen_sink or args.require_cooking_friendly,
         strict_features=args.strict_features,
         max_commute_minutes=args.max_commute,
         transport_mode=args.transport_mode,
