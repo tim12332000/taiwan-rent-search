@@ -49,5 +49,8 @@ data/cases/*/current_dataset.csv
 data/cases/*/dataset_*.csv
 data/cases/*/search_app.html
 data/cases/*/latest_run.json
+data/cases/*/ai_cooking_reviews.json
+data/cases/*/ai_usage.jsonl
+data/cases/*/images/
 tmp_app.html
 tmp_app_script.js

@@ -8,6 +8,7 @@ import json
 import webbrowser
 from pathlib import Path
 
+from .ai_cooking_review import load_ai_reviews
 from .analysis import (
     TAIPEI_DISTRICT_CENTERS,
     cooking_convenience_profile,
@@ -75,12 +76,21 @@ def build_listing_address(row: dict[str, str]) -> str:
     )
 
 
-def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
+def find_ai_review_path_for_dataset(input_path: str | Path) -> Path | None:
+    candidate = Path(input_path).parent / "ai_cooking_reviews.json"
+    return candidate if candidate.exists() else None
+
+
+def listing_to_view_model(row: dict[str, str], ai_review: dict[str, object] | None = None) -> dict[str, object]:
     images = parse_images(row.get("images"))
     address = build_listing_address(row)
     center = district_center(row.get("location_district", ""))
     nearest_station = find_nearest_station(center.lat if center else None, center.lon if center else None)
     cooking_score, cooking_label, cooking_reason = cooking_convenience_profile(row)
+    if ai_review:
+        cooking_score = int(ai_review.get("score") or cooking_score)
+        cooking_label = str(ai_review.get("label") or cooking_label)
+        cooking_reason = str(ai_review.get("reason") or cooking_reason)
     search_text = " ".join(
         part for part in [
             row.get("platform", ""),
@@ -122,6 +132,7 @@ def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
         "cooking_convenience_score": cooking_score,
         "cooking_convenience_label": cooking_label,
         "cooking_convenience_reason": cooking_reason,
+        "ai_cooking_confidence": ai_review.get("confidence") if ai_review else None,
         "updated_at": row.get("updated_at", ""),
         "detail_shortest_lease": row.get("detail_shortest_lease", ""),
         "detail_rules": row.get("detail_rules", ""),
@@ -135,7 +146,8 @@ def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
 
 def prepare_listing_view_models(input_path: str | Path) -> list[dict[str, object]]:
     rows = load_listings(input_path)
-    return [listing_to_view_model(row) for row in rows]
+    ai_reviews = load_ai_reviews(find_ai_review_path_for_dataset(input_path) or "")
+    return [listing_to_view_model(row, ai_reviews.get(row.get("id", ""))) for row in rows]
 
 
 def render_search_app_html(input_path: str | Path, listings: list[dict[str, object]]) -> str:
@@ -837,6 +849,9 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const cookingReason = item.cooking_convenience_reason
         ? `可煮飯判斷：${{item.cooking_convenience_reason}}`
         : '可煮飯判斷：待補';
+      const cookingConfidence = item.ai_cooking_confidence !== null && item.ai_cooking_confidence !== undefined
+        ? `AI 信心：${{Math.round(Number(item.ai_cooking_confidence) * 100)}}%`
+        : 'AI 信心：待補';
       const details = [
         item.detail_shortest_lease ? `最短租期：${{item.detail_shortest_lease}}` : '',
         item.detail_deposit ? `押金：${{item.detail_deposit}}` : '',
@@ -867,6 +882,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
             <div class="meta-sub">${{commute}}</div>
             <div class="meta-sub">${{metroStation}}</div>
             <div class="meta-sub">${{cookingReason}}</div>
+            <div class="meta-sub">${{cookingConfidence}}</div>
             <div class="meta-sub">${{details || '細節待補'}}</div>
             <div class="desc">${{item.description || '目前沒有額外描述。'}}</div>
             ${{rules}}

@@ -32,6 +32,18 @@ def build_case_search_app_path(case_slug: str, base_dir: str | Path = DEFAULT_CA
     return build_case_dir(case_slug, base_dir) / "search_app.html"
 
 
+def build_case_ai_reviews_path(case_slug: str, base_dir: str | Path = DEFAULT_CASES_DIR) -> Path:
+    return build_case_dir(case_slug, base_dir) / "ai_cooking_reviews.json"
+
+
+def build_case_ai_usage_log_path(case_slug: str, base_dir: str | Path = DEFAULT_CASES_DIR) -> Path:
+    return build_case_dir(case_slug, base_dir) / "ai_usage.jsonl"
+
+
+def build_case_images_dir(case_slug: str, base_dir: str | Path = DEFAULT_CASES_DIR) -> Path:
+    return build_case_dir(case_slug, base_dir) / "images"
+
+
 def ensure_case_workspace(
     case_slug: str,
     *,

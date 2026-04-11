@@ -117,6 +117,8 @@ python -m src.songren_100_case --open
 .\search_songren_100.ps1
 ```
 
+松仁路 100 號案例工作區現在也會把 AI 看圖結果與 token 用量記錄到專用資料夾中，方便之後重複使用與複查，但這些執行產物只保留在本機，不會進 git。
+
 固定入口檔案是 `data/search_app.html`。現在更推薦直接啟動本機網站，因為可以在網頁裡按「更新資料」而不是回到命令列。
 `open_search_app` 會優先重用既有的本機搜尋站；如果預設的 `8765` 埠已被別的程式佔用，會改用其他可用埠，而不會先把對方殺掉。
 如果本機搜尋站正在執行，`search_by_destination` / `python -m src.smart_search --open` 也會自動重用那個站點並直接打開對應搜尋頁。

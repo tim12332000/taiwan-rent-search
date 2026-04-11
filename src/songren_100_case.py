@@ -6,6 +6,7 @@ import argparse
 import json
 import webbrowser
 
+from .ai_cooking_review import review_case_dataset_images
 from .analysis import extract_county_from_text, extract_district_from_text
 from .case_workspace import (
     build_case_current_dataset_path,
@@ -16,6 +17,7 @@ from .case_workspace import (
     sync_case_current_dataset,
 )
 from .smart_search import build_open_url, refresh_search_for_destination
+from .webapp import export_search_app
 
 
 CASE_SLUG = "songren_100"
@@ -29,6 +31,8 @@ def refresh_songren_100_case(
     base_max_pages: int = 3,
     focus_max_pages: int = 5,
     detail_limit: int = 20,
+    ai_review_max_listings: int = 12,
+    ai_review_max_images: int = 4,
 ) -> dict[str, str | int]:
     county = extract_county_from_text(DESTINATION_ADDRESS, default="台北市") or "台北市"
     district = extract_district_from_text(DESTINATION_ADDRESS) or ""
@@ -51,6 +55,14 @@ def refresh_songren_100_case(
         enrich_591_detail_limit=detail_limit,
     )
     current_dataset = sync_case_current_dataset(dataset_path, case_slug=CASE_SLUG, base_dir=base_dir)
+    ai_review_summary = review_case_dataset_images(
+        dataset_path=current_dataset,
+        case_slug=CASE_SLUG,
+        base_dir=base_dir,
+        max_listings=ai_review_max_listings,
+        max_images_per_listing=ai_review_max_images,
+    )
+    search_path = export_search_app(current_dataset, case_search_app)
     summary = {
         "case_dir": str(case_dir),
         "destination_address": DESTINATION_ADDRESS,
@@ -58,6 +70,10 @@ def refresh_songren_100_case(
         "dataset_current": str(current_dataset),
         "search_app": str(search_path),
         "records": record_count,
+        "ai_review_path": ai_review_summary["review_path"],
+        "ai_usage_log_path": ai_review_summary["usage_log_path"],
+        "ai_reviewed_count": ai_review_summary["reviewed_count"],
+        "ai_cached_count": ai_review_summary["cached_count"],
     }
     (case_dir / "latest_run.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2),
@@ -76,6 +92,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-max-pages", type=int, default=3, help="全市基礎資料池每來源頁數")
     parser.add_argument("--focus-max-pages", type=int, default=5, help="目的地加抓每來源頁數")
     parser.add_argument("--detail-limit", type=int, default=20, help="591 詳頁補抓數量")
+    parser.add_argument("--ai-review-max-listings", type=int, default=12, help="最多用 AI 看圖幾筆候選")
+    parser.add_argument("--ai-review-max-images", type=int, default=4, help="每筆最多送幾張圖給 AI")
     parser.add_argument("--open", action="store_true", help="完成後直接開啟本機搜尋頁")
     return parser.parse_args()
 
@@ -88,6 +106,8 @@ def main() -> None:
         base_max_pages=args.base_max_pages,
         focus_max_pages=args.focus_max_pages,
         detail_limit=args.detail_limit,
+        ai_review_max_listings=args.ai_review_max_listings,
+        ai_review_max_images=args.ai_review_max_images,
     )
     print(f"Case dir: {summary['case_dir']}")
     print(f"Destination: {summary['destination_address']}")
@@ -95,6 +115,10 @@ def main() -> None:
     print(f"Current dataset: {summary['dataset_current']}")
     print(f"Search app: {summary['search_app']}")
     print(f"Records: {summary['records']}")
+    print(f"AI review cache: {summary['ai_review_path']}")
+    print(f"AI usage log: {summary['ai_usage_log_path']}")
+    print(f"AI reviewed this run: {summary['ai_reviewed_count']}")
+    print(f"AI cache hits this run: {summary['ai_cached_count']}")
 
 
 if __name__ == "__main__":

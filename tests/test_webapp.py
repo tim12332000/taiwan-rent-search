@@ -145,6 +145,21 @@ def test_prepare_listing_view_models_reads_csv(tmp_path):
     assert models[1]["platform"] == "mixrent"
 
 
+def test_prepare_listing_view_models_merges_adjacent_ai_reviews(tmp_path):
+    csv_path = tmp_path / "sample.csv"
+    write_sample_csv(csv_path)
+    (tmp_path / "ai_cooking_reviews.json").write_text(
+        '{"591-1":{"label":"適合煮飯","score":3,"confidence":0.91,"reason":"AI 看圖判定有完整備餐與爐具空間"}}',
+        encoding="utf-8",
+    )
+
+    models = prepare_listing_view_models(csv_path)
+
+    assert models[0]["cooking_convenience_label"] == "適合煮飯"
+    assert models[0]["cooking_convenience_reason"] == "AI 看圖判定有完整備餐與爐具空間"
+    assert models[0]["ai_cooking_confidence"] == 0.91
+
+
 def test_render_search_app_html_contains_filters_and_data(tmp_path):
     csv_path = tmp_path / "sample.csv"
     write_sample_csv(csv_path)
@@ -179,8 +194,10 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "可煮飯方便程度優先" in html_text
     assert "cooking_convenience_score" in html_text
     assert "cooking_convenience_reason" in html_text
+    assert "ai_cooking_confidence" in html_text
     assert "可煮飯：" in html_text
     assert "可煮飯判斷：" in html_text
+    assert "AI 信心：" in html_text
     assert "gallery-modal" in html_text
     assert "openGallery" in html_text
     assert "moveGallery" in html_text
