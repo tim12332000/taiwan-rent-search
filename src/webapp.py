@@ -423,6 +423,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
   <script>
     const listings = {listings_json};
     const districtCenters = {district_centers_json};
+    const pageParams = new URLSearchParams(window.location.search);
     const els = {{
       q: document.getElementById('q'),
       destination: document.getElementById('destination'),
@@ -540,6 +541,27 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       return Object.keys(districtCenters).find(name => text.includes(name)) || '';
     }}
 
+    function inferDistrictFromListings(query) {{
+      const needles = buildAddressNeedles(query);
+      if (!needles.length) return '';
+
+      const districtScores = new Map();
+      listings.forEach(item => {{
+        if (!item.district || !item.search_text_compact) return;
+        let bestMatchScore = 0;
+        needles.forEach(needle => {{
+          if (needle && item.search_text_compact.includes(needle)) {{
+            bestMatchScore = Math.max(bestMatchScore, needle.length);
+          }}
+        }});
+        if (!bestMatchScore) return;
+        districtScores.set(item.district, (districtScores.get(item.district) || 0) + bestMatchScore);
+      }});
+
+      const ranked = [...districtScores.entries()].sort((a, b) => b[1] - a[1]);
+      return ranked.length ? ranked[0][0] : '';
+    }}
+
     function getDestinationQuery() {{
       const explicitDestination = (els.destination.value || '').trim();
       if (explicitDestination) return explicitDestination;
@@ -549,10 +571,18 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     }}
 
     function resolveDestination(value) {{
-      const district = extractDistrictFromText(value);
+      const latParam = pageParams.get('destination_lat');
+      const lonParam = pageParams.get('destination_lon');
+      const lat = latParam === null ? NaN : Number(latParam);
+      const lon = lonParam === null ? NaN : Number(lonParam);
+      if (!Number.isNaN(lat) && !Number.isNaN(lon)) {{
+        return {{ district: extractDistrictFromText(value), lat, lon }};
+      }}
+
+      const district = extractDistrictFromText(value) || inferDistrictFromListings(value);
       if (!district || !districtCenters[district]) return null;
-      const [lat, lon] = districtCenters[district];
-      return {{ district, lat, lon }};
+      const [districtLat, districtLon] = districtCenters[district];
+      return {{ district, lat: districtLat, lon: districtLon }};
     }}
 
     function getCommuteEstimate(item, destination) {{
@@ -662,6 +692,10 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
 
     fillSelect(els.district, uniqueValues('district'));
     fillSelect(els.platform, uniqueValues('platform'));
+    const initialQuery = pageParams.get('q');
+    const initialDestination = pageParams.get('destination');
+    if (initialQuery) els.q.value = initialQuery;
+    if (initialDestination) els.destination.value = initialDestination;
     [els.q, els.destination, els.district, els.platform, els.maxPrice, els.minArea, els.kitchenOnly, els.hasImages, els.sortBy]
       .forEach(el => el.addEventListener('input', applyFilters));
     applyFilters();

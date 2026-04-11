@@ -2,6 +2,6 @@
 setlocal
 
 cd /d "%~dp0"
-python -m src.webapp --open
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0open_search_app.ps1"
 
 endlocal

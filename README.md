@@ -79,14 +79,23 @@ python -m src.analysis --destination-address "台北市信義區松仁路100號 
 # 產出本地即時搜尋網站
 python -m src.webapp --input data\\591-ddroom-housefun-mixrent_taipei_20260406_233623.csv
 
-# 用最新資料集更新固定入口並直接打開瀏覽器
-python -m src.webapp --open
+# 啟動本機網站（建議）
+python -m src.local_site
 
-# Windows 一鍵開啟
+# 先輸入目的地，再更新較相關的資料池並打開搜尋頁
+python -m src.smart_search --destination-address "台北市信義區松仁路100號" --open
+
+# Windows 一鍵開啟本機網站
 .\open_search_app.ps1
+
+# Windows 目的地導向更新
+.\search_by_destination.ps1
 ```
 
-固定入口檔案是 `data/search_app.html`。每次執行 `python -m src.webapp` 時，都會同步更新這個檔案，所以之後不用再記每次產生的時間戳 HTML。
+固定入口檔案是 `data/search_app.html`。現在更推薦直接啟動本機網站，因為可以在網頁裡按「更新資料」而不是回到命令列。
+`open_search_app` 會優先重用既有的本機搜尋站；如果預設的 `8765` 埠已被別的程式佔用，會改用其他可用埠，而不會先把對方殺掉。
+如果本機搜尋站正在執行，`search_by_destination` / `python -m src.smart_search --open` 也會自動重用那個站點並直接打開對應搜尋頁。
+`python -m src.main ...` 在匯出後也會直接印出資料品質摘要，例如來源分布、圖片覆蓋率、樓層資訊覆蓋率與詳頁補強覆蓋率，方便快速判斷這份資料池是否值得繼續分析。
 
 ## 進度
 

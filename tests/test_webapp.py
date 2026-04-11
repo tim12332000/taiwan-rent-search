@@ -136,6 +136,11 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "getCommuteEstimate" in html_text
     assert "估通勤" in html_text
     assert "最近捷運" in html_text
+    assert "URLSearchParams" in html_text
+    assert "destination_lat" in html_text
+    assert "inferDistrictFromListings" in html_text
+    assert "latParam === null ? NaN : Number(latParam)" in html_text
+    assert "const [districtLat, districtLon] = districtCenters[district]" in html_text
 
 
 def test_build_search_app_output_path_uses_input_stem():

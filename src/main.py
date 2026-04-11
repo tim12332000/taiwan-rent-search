@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
+from .analysis import extract_district_from_text
 from .models import HousingData
 from .scrapers.ddroom import DDRoomScraper
 from .scrapers.fang591 import Fang591Scraper
@@ -47,6 +50,76 @@ CSV_FIELDNAMES = [
     "contact_email",
     "images",
 ]
+
+ProgressCallback = Callable[[str, int | None, int | None, int | None], None]
+DETAIL_COVERAGE_FIELDS = (
+    "detail_shortest_lease",
+    "detail_rules",
+    "detail_included_fees",
+    "detail_deposit",
+    "detail_management_fee",
+    "detail_parking_fee",
+    "detail_property_registration",
+    "detail_direction",
+    "detail_owner_name",
+    "detail_contact_phone",
+    "detail_facilities",
+)
+
+
+@dataclass
+class DatasetSummary:
+    total: int
+    platform_counts: dict[str, int]
+    with_images_count: int
+    with_floor_area_count: int
+    with_floor_count: int
+    with_detail_count: int
+
+
+def report_progress(
+    progress_callback: ProgressCallback | None,
+    message: str,
+    current: int | None = None,
+    total: int | None = None,
+    records: int | None = None,
+) -> None:
+    if progress_callback:
+        progress_callback(message, current, total, records)
+
+
+def summarize_dataset(records: list[HousingData]) -> DatasetSummary:
+    platform_counts: dict[str, int] = {}
+    with_images_count = 0
+    with_floor_area_count = 0
+    with_floor_count = 0
+    with_detail_count = 0
+
+    for record in records:
+        platform_counts[record.platform] = platform_counts.get(record.platform, 0) + 1
+        if record.images:
+            with_images_count += 1
+        if record.floor_area is not None:
+            with_floor_area_count += 1
+        if (record.floor or "").strip():
+            with_floor_count += 1
+        if any(getattr(record, field) for field in DETAIL_COVERAGE_FIELDS):
+            with_detail_count += 1
+
+    return DatasetSummary(
+        total=len(records),
+        platform_counts=dict(sorted(platform_counts.items())),
+        with_images_count=with_images_count,
+        with_floor_area_count=with_floor_area_count,
+        with_floor_count=with_floor_count,
+        with_detail_count=with_detail_count,
+    )
+
+
+def format_coverage(label: str, count: int, total: int) -> str:
+    ratio = f"{count}/{total}"
+    percent = 0 if total == 0 else round((count / total) * 100)
+    return f"{label} {ratio} ({percent}%)"
 
 
 def sanitize_csv_value(value):
@@ -140,14 +213,31 @@ def scrape_sources(
     max_pages: int = 3,
     enrich_591_details: bool = False,
     enrich_591_detail_limit: int = 10,
+    district: str = "",
+    query: str = "",
+    progress_callback: ProgressCallback | None = None,
+    progress_base: int = 0,
+    progress_total: int | None = None,
+    progress_label: str = "",
 ) -> list[HousingData]:
     records: list[HousingData] = []
-    for source in sources:
+    phase_label = f"{progress_label} " if progress_label else ""
+    total_sources = len(sources)
+    total_steps = progress_total or total_sources
+    for index, source in enumerate(sources, start=1):
+        report_progress(
+            progress_callback,
+            f"{phase_label}正在抓 {source}...",
+            progress_base + index - 1,
+            total_steps,
+            len(records),
+        )
         if source == "591":
             with Fang591Scraper(delay=delay) as scraper:
                 records.extend(
                     scraper.scrape(
                         county=county,
+                        district=district,
                         max_pages=max_pages,
                         enrich_details=enrich_591_details,
                         detail_limit=enrich_591_detail_limit,
@@ -155,15 +245,22 @@ def scrape_sources(
                 )
         elif source == "mixrent":
             with MixRentScraper(delay=delay) as scraper:
-                records.extend(scraper.scrape(county=county, max_pages=max_pages))
+                records.extend(scraper.scrape(county=county, district=district, query=query, max_pages=max_pages))
         elif source == "housefun":
             with HousefunScraper(delay=delay) as scraper:
                 records.extend(scraper.scrape(county=county, max_pages=max_pages))
         elif source == "ddroom":
             with DDRoomScraper(delay=delay) as scraper:
-                records.extend(scraper.scrape(county=county, max_pages=max_pages))
+                records.extend(scraper.scrape(county=county, district=district, keyword=query, max_pages=max_pages))
         else:
             raise ValueError(f"Unsupported source: {source}")
+        report_progress(
+            progress_callback,
+            f"{phase_label}已完成 {source}，目前累積 {len(records)} 筆",
+            progress_base + index,
+            total_steps,
+            len(records),
+        )
     return dedupe_records(records)
 
 
@@ -175,6 +272,8 @@ def scrape_sources_to_csv(
     max_pages: int = 3,
     enrich_591_details: bool = False,
     enrich_591_detail_limit: int = 10,
+    district: str = "",
+    query: str = "",
 ) -> tuple[Path, list[HousingData]]:
     records = scrape_sources(
         sources=sources,
@@ -183,9 +282,70 @@ def scrape_sources_to_csv(
         max_pages=max_pages,
         enrich_591_details=enrich_591_details,
         enrich_591_detail_limit=enrich_591_detail_limit,
+        district=district,
+        query=query,
     )
     target = Path(output_path) if output_path else build_multi_source_output_path(county, sources)
     path = export_to_csv(records, target)
+    return path, records
+
+
+def scrape_sources_with_focus(
+    sources: list[str],
+    county: str,
+    destination_address: str = "",
+    output_path: str | Path | None = None,
+    delay: float = 2.0,
+    base_max_pages: int = 3,
+    focus_max_pages: int = 5,
+    enrich_591_details: bool = False,
+    enrich_591_detail_limit: int = 10,
+    progress_callback: ProgressCallback | None = None,
+) -> tuple[Path, list[HousingData]]:
+    district = extract_district_from_text(destination_address) or ""
+    query = destination_address.strip() or f"{county}{district}".strip()
+    focused_sources = [source for source in sources if source in {"mixrent", "ddroom"}]
+    total_steps = len(sources) + len(focused_sources) + 2
+    step = 0
+
+    report_progress(progress_callback, "開始建立全市基礎資料池...", step, total_steps, 0)
+
+    base_records = scrape_sources(
+        sources=sources,
+        county=county,
+        delay=delay,
+        max_pages=base_max_pages,
+        enrich_591_details=enrich_591_details,
+        enrich_591_detail_limit=enrich_591_detail_limit,
+        progress_callback=progress_callback,
+        progress_base=step,
+        progress_total=total_steps,
+        progress_label="基礎資料池",
+    )
+    step += len(sources)
+    report_progress(progress_callback, f"基礎資料池完成，共 {len(base_records)} 筆", step, total_steps, len(base_records))
+
+    focused_records = scrape_sources(
+        sources=focused_sources,
+        county=county,
+        delay=delay,
+        max_pages=focus_max_pages,
+        district=district,
+        query=query,
+        progress_callback=progress_callback,
+        progress_base=step,
+        progress_total=total_steps,
+        progress_label="目的地加抓",
+    ) if focused_sources and query else []
+    step += len(focused_sources)
+    if focused_sources and query:
+        report_progress(progress_callback, f"目的地加抓完成，共 {len(focused_records)} 筆", step, total_steps, len(base_records) + len(focused_records))
+
+    records = dedupe_records(base_records + focused_records)
+    report_progress(progress_callback, f"整理與去重完成，共 {len(records)} 筆", total_steps - 1, total_steps, len(records))
+    target = Path(output_path) if output_path else build_multi_source_output_path(county, sources)
+    path = export_to_csv(records, target)
+    report_progress(progress_callback, f"資料池已輸出到 {path.name}", total_steps, total_steps, len(records))
     return path, records
 
 
@@ -219,8 +379,20 @@ def main() -> None:
             output_path=args.output,
             delay=args.delay,
         )
+    summary = summarize_dataset(records)
+    source_mix = ", ".join(f"{platform}:{count}" for platform, count in summary.platform_counts.items()) or "none"
+    coverage_line = " | ".join(
+        [
+            format_coverage("images", summary.with_images_count, summary.total),
+            format_coverage("floor area", summary.with_floor_area_count, summary.total),
+            format_coverage("floor", summary.with_floor_count, summary.total),
+            format_coverage("detail", summary.with_detail_count, summary.total),
+        ]
+    )
     print(f"CSV exported: {path}")
     print(f"Records: {len(records)}")
+    print(f"Source mix: {source_mix}")
+    print(f"Coverage: {coverage_line}")
 
 
 if __name__ == "__main__":

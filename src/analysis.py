@@ -31,6 +31,18 @@ TAIPEI_DISTRICT_CENTERS = {
     "文山區": (24.9896, 121.5707),
 }
 
+COUNTY_ALIASES = {
+    "台北市": "台北市",
+    "臺北市": "台北市",
+    "新北市": "新北市",
+    "桃園市": "桃園市",
+    "台中市": "台中市",
+    "臺中市": "台中市",
+    "台南市": "台南市",
+    "臺南市": "台南市",
+    "高雄市": "高雄市",
+}
+
 KITCHEN_SINK_KEYWORDS = (
     "流理台",
     "流理臺",
@@ -248,6 +260,14 @@ def extract_district_from_text(text: str | None) -> str | None:
         if district in normalized:
             return district
     return None
+
+
+def extract_county_from_text(text: str | None, default: str | None = None) -> str | None:
+    normalized = (text or "").replace("臺", "台")
+    for county, canonical in COUNTY_ALIASES.items():
+        if county.replace("臺", "台") in normalized:
+            return canonical
+    return default
 
 
 def resolve_destination(criteria: SearchCriteria, geocoder: NominatimGeocoder | None) -> Coordinates | None:

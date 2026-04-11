@@ -18,10 +18,13 @@ from src.main import (
     build_multi_source_output_path,
     dedupe_records,
     export_to_csv,
+    format_coverage,
     main as main_entry,
     sanitize_csv_value,
+    scrape_sources_with_focus,
     scrape_sources_to_csv,
     scrape_to_csv,
+    summarize_dataset,
 )
 from src.scrapers.base import BaseScraper
 from src.scrapers.ddroom import DDRoomScraper
@@ -397,6 +400,7 @@ class TestFang591Scraper:
               </div>
               <div class="pattern">
                 <span>獨立套房</span>
+                <span>1房1衛</span>
                 <span>20坪</span>
                 <span>10F/18F</span>
               </div>
@@ -437,8 +441,28 @@ class TestFang591Scraper:
         assert detail["detail_contact_phone"] == "0932-034-231"
         assert detail["detail_facilities"] == ["冰箱", "天然瓦斯"]
         assert detail["room_type"] == "獨立套房"
+        assert detail["bedrooms"] == 1
+        assert detail["bathrooms"] == 1
         assert detail["floor_area"] == 20.0
         assert detail["floor"] == "10F/18F"
+
+    def test_parse_detail_html_normalizes_alternate_floor_pattern(self):
+        scraper = Fang591Scraper()
+        detail = scraper.parse_detail_html(
+            """
+            <section class="block info-board">
+              <div class="pattern">
+                <span>整層住家</span>
+                <span>2房2衛</span>
+                <span>樓層：3 / 12</span>
+              </div>
+            </section>
+            """
+        )
+
+        assert detail["bedrooms"] == 2
+        assert detail["bathrooms"] == 2
+        assert detail["floor"] == "3F/12F"
 
     def test_merge_detail_overwrites_missing_listing_fields(self):
         scraper = Fang591Scraper()
@@ -462,6 +486,8 @@ class TestFang591Scraper:
         )
         detail = {
             "room_type": "獨立套房",
+            "bedrooms": 2,
+            "bathrooms": 2,
             "floor_area": 20.0,
             "floor": "10F/18F",
             "description": "補強描述",
@@ -481,6 +507,8 @@ class TestFang591Scraper:
         merged = scraper.merge_detail(base_listing, detail)
 
         assert merged.room_type == "獨立套房"
+        assert merged.bedrooms == 2
+        assert merged.bathrooms == 2
         assert merged.floor_area == 20.0
         assert merged.floor == "10F/18F"
         assert merged.description == "補強描述"
@@ -1080,6 +1108,26 @@ class TestCsvExport:
 
         assert "CSV exported:" in out
         assert "Records: 2" in out
+        assert "Source mix: 591:2" in out
+        assert "Coverage:" in out
+
+    def test_summarize_dataset_counts_quality_signals(self):
+        records = self._sample_records()
+        records[0].floor = "3F"
+        records[0].detail_rules = "不可養寵物"
+        records[0].detail_facilities = ["冰箱"]
+
+        summary = summarize_dataset(records)
+
+        assert summary.total == 2
+        assert summary.platform_counts == {"591": 2}
+        assert summary.with_images_count == 1
+        assert summary.with_floor_area_count == 2
+        assert summary.with_floor_count == 1
+        assert summary.with_detail_count == 1
+
+    def test_format_coverage_includes_ratio_and_percentage(self):
+        assert format_coverage("images", 1, 4) == "images 1/4 (25%)"
 
     def test_dedupe_records_keeps_unique_url_title_price(self):
         records = self._sample_records()
@@ -1135,7 +1183,7 @@ class TestCsvExport:
         mixrent_records = [self._sample_records()[0]]
         rent591_records = [self._sample_records()[1]]
 
-        monkeypatch.setattr(Fang591Scraper, "scrape", lambda self, county="", max_pages=3, enrich_details=False, detail_limit=10: rent591_records)
+        monkeypatch.setattr(Fang591Scraper, "scrape", lambda self, county="", district="", max_pages=3, enrich_details=False, detail_limit=10: rent591_records)
         monkeypatch.setattr(MixRentScraper, "scrape", lambda self, county="台北市", district="", query="", max_pages=3: mixrent_records)
 
         output = tmp_path / "combined.csv"
@@ -1149,8 +1197,9 @@ class TestCsvExport:
         calls = {}
         sample_record = self._sample_records()[0]
 
-        def fake_591(self, county="", max_pages=3, enrich_details=False, detail_limit=10):
+        def fake_591(self, county="", district="", max_pages=3, enrich_details=False, detail_limit=10):
             calls["county"] = county
+            calls["district"] = district
             calls["max_pages"] = max_pages
             calls["enrich_details"] = enrich_details
             calls["detail_limit"] = detail_limit
@@ -1173,10 +1222,112 @@ class TestCsvExport:
         assert len(written_records) == 1
         assert calls == {
             "county": "台北市",
+            "district": "",
             "max_pages": 2,
             "enrich_details": True,
             "detail_limit": 3,
         }
+
+    def test_scrape_sources_with_focus_adds_destination_targeted_results(self, monkeypatch, tmp_path):
+        base_591 = [self._sample_records()[0]]
+        base_mixrent = [self._sample_records()[1]]
+        focused_ddroom = [
+            HousingData(
+                id="ddroom-3",
+                platform="ddroom",
+                title="第三筆",
+                price=18000,
+                location=Location(county="台北市", district="信義區", area="松仁路"),
+                room_type="套房",
+                bedrooms=1,
+                bathrooms=1,
+                floor_area=12.0,
+                floor=None,
+                contact=Contact(name="林先生"),
+                images=[],
+                description="desc3",
+                url="https://www.dd-room.com/object/3",
+                scraped_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+        ]
+        calls = {"mixrent": [], "ddroom": []}
+
+        monkeypatch.setattr(
+            Fang591Scraper,
+            "scrape",
+            lambda self, county="", district="", max_pages=3, enrich_details=False, detail_limit=10: base_591,
+        )
+
+        def fake_mixrent(self, county="台北市", district="", query="", max_pages=3):
+            calls["mixrent"].append((county, district, query, max_pages))
+            return base_mixrent if not district and not query else []
+
+        def fake_ddroom(self, county="台北市", district="", keyword="", max_pages=1):
+            calls["ddroom"].append((county, district, keyword, max_pages))
+            return [] if not district and not keyword else focused_ddroom
+
+        monkeypatch.setattr(MixRentScraper, "scrape", fake_mixrent)
+        monkeypatch.setattr(DDRoomScraper, "scrape", fake_ddroom)
+
+        output = tmp_path / "focused.csv"
+        path, written_records = scrape_sources_with_focus(
+            ["591", "mixrent", "ddroom"],
+            "台北市",
+            destination_address="台北市信義區松仁路100號",
+            output_path=output,
+            delay=0,
+            base_max_pages=2,
+            focus_max_pages=4,
+        )
+
+        assert path == output
+        assert len(written_records) == 3
+        assert calls["mixrent"] == [
+            ("台北市", "", "", 2),
+            ("台北市", "信義區", "台北市信義區松仁路100號", 4),
+        ]
+        assert calls["ddroom"] == [
+            ("台北市", "", "", 2),
+            ("台北市", "信義區", "台北市信義區松仁路100號", 4),
+        ]
+
+    def test_scrape_sources_with_focus_reports_progress(self, monkeypatch):
+        messages = []
+        base_591 = [self._sample_records()[0]]
+        base_mixrent = [self._sample_records()[1]]
+
+        monkeypatch.setattr(
+            Fang591Scraper,
+            "scrape",
+            lambda self, county="", district="", max_pages=3, enrich_details=False, detail_limit=10: base_591,
+        )
+        monkeypatch.setattr(
+            MixRentScraper,
+            "scrape",
+            lambda self, county="台北市", district="", query="", max_pages=3: base_mixrent,
+        )
+        monkeypatch.setattr(
+            DDRoomScraper,
+            "scrape",
+            lambda self, county="台北市", district="", keyword="", max_pages=1: [],
+        )
+
+        scrape_sources_with_focus(
+            ["591", "mixrent", "ddroom"],
+            "台北市",
+            destination_address="台北市信義區松仁路100號",
+            delay=0,
+            base_max_pages=1,
+            focus_max_pages=1,
+            progress_callback=lambda message, current, total, records: messages.append((message, current, total, records)),
+        )
+
+        assert messages[0][0] == "開始建立全市基礎資料池..."
+        assert any("基礎資料池 正在抓 591" in message for message, _, _, _ in messages)
+        assert any("目的地加抓 正在抓 mixrent" in message for message, _, _, _ in messages)
+        assert messages[-1][0].startswith("資料池已輸出到 ")
+        assert messages[-1][3] == 2
 
 
 class TestLocationAndContact:

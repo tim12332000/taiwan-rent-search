@@ -45,3 +45,5 @@ data/downloads/
 data/*.csv
 data/*.md
 data/*.html
+tmp_app.html
+tmp_app_script.js

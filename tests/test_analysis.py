@@ -14,6 +14,7 @@ from src.analysis import (
     build_analysis_output_path,
     build_html_output_path,
     build_report_output_path,
+    extract_county_from_text,
     extract_district_from_text,
     export_analysis_results,
     export_html_report,
@@ -400,6 +401,10 @@ def test_resolve_destination_falls_back_to_district_center_when_geocode_missing(
 
 def test_extract_district_from_text_returns_matched_district():
     assert extract_district_from_text("台北市信義區松仁路100號") == "信義區"
+
+
+def test_extract_county_from_text_returns_matched_county():
+    assert extract_county_from_text("臺北市信義區松仁路100號") == "台北市"
 
 
 def test_build_analysis_output_path_uses_input_stem():

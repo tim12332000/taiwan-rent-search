@@ -251,6 +251,8 @@ class Fang591Scraper(BaseScraper):
             "detail_contact_phone": None,
             "detail_facilities": [],
             "room_type": None,
+            "bedrooms": None,
+            "bathrooms": None,
             "floor_area": None,
             "floor": None,
             "description": None,
@@ -262,13 +264,21 @@ class Fang591Scraper(BaseScraper):
                 parts = [span.get_text(" ", strip=True) for span in pattern.select("span") if span.get_text(" ", strip=True) and span.get_text(" ", strip=True) != "|"]
                 if parts:
                     result["room_type"] = parts[0]
+                pattern_text = " ".join(parts)
+                if pattern_text:
+                    bedroom, bathroom = self._extract_room_counts(pattern_text, result["room_type"] or "")
+                    if "房" in pattern_text or result["room_type"]:
+                        result["bedrooms"] = bedroom
+                    if "衛" in pattern_text:
+                        result["bathrooms"] = bathroom
                 for part in parts:
                     if "坪" in part and result["floor_area"] is None:
                         match = re.search(r"(\d+(?:\.\d+)?)", part)
                         if match:
                             result["floor_area"] = float(match.group(1))
-                    if "F/" in part:
-                        result["floor"] = part
+                    floor_text = self._extract_floor_from_detail_text(part)
+                    if floor_text:
+                        result["floor"] = floor_text
 
             labels = [span.get_text(" ", strip=True) for span in info_board.select("div.house-label span.label-item") if span.get_text(" ", strip=True)]
             if labels:
@@ -329,6 +339,8 @@ class Fang591Scraper(BaseScraper):
         return replace(
             listing,
             room_type=detail.get("room_type") or listing.room_type,
+            bedrooms=detail.get("bedrooms") if detail.get("bedrooms") is not None else listing.bedrooms,
+            bathrooms=detail.get("bathrooms") if detail.get("bathrooms") is not None else listing.bathrooms,
             floor_area=detail.get("floor_area") if detail.get("floor_area") is not None else listing.floor_area,
             floor=detail.get("floor") or listing.floor,
             description=detail.get("description") or listing.description,
@@ -349,6 +361,18 @@ class Fang591Scraper(BaseScraper):
             detail_contact_phone=detail.get("detail_contact_phone"),
             detail_facilities=list(detail.get("detail_facilities") or []),
         )
+
+    @staticmethod
+    def _extract_floor_from_detail_text(text: str) -> str | None:
+        """Normalize floor text from detail patterns to the shared xF/yF format."""
+        cleaned = text.replace("樓層", "").replace("：", "").replace(":", "").strip()
+        if "F/" in cleaned:
+            return cleaned
+
+        match = re.search(r"(\d+)\s*/\s*(\d+)", cleaned)
+        if not match:
+            return None
+        return f"{match.group(1)}F/{match.group(2)}F"
 
     def _extract_url(self, title_link) -> str:
         """提取詳頁連結。"""
