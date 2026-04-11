@@ -104,6 +104,7 @@ def test_listing_to_view_model_extracts_cover_and_search_text():
     assert model["kitchen_sink_signal"] is True
     assert model["cooking_convenience_score"] == 3
     assert model["cooking_convenience_label"] == "適合煮飯"
+    assert model["cooking_convenience_reason"] == "文字同時提到流理臺與可煮飯設備"
     assert "台北市" in model["search_text"]
     assert "信義區" in model["search_text"]
     assert "最短租期一年" in model["search_text"]
@@ -177,7 +178,9 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "只看有圖片（方便手動看廚房）" in html_text
     assert "可煮飯方便程度優先" in html_text
     assert "cooking_convenience_score" in html_text
+    assert "cooking_convenience_reason" in html_text
     assert "可煮飯：" in html_text
+    assert "可煮飯判斷：" in html_text
     assert "搜尋速度" in html_text
     assert "performance.now()" in html_text
     assert "calculateSearchSpeedScore" in html_text

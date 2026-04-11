@@ -80,7 +80,7 @@ def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
     address = build_listing_address(row)
     center = district_center(row.get("location_district", ""))
     nearest_station = find_nearest_station(center.lat if center else None, center.lon if center else None)
-    cooking_score, cooking_label = cooking_convenience_profile(row)
+    cooking_score, cooking_label, cooking_reason = cooking_convenience_profile(row)
     search_text = " ".join(
         part for part in [
             row.get("platform", ""),
@@ -121,6 +121,7 @@ def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
         "kitchen_sink_signal": has_kitchen_sink_signal(row),
         "cooking_convenience_score": cooking_score,
         "cooking_convenience_label": cooking_label,
+        "cooking_convenience_reason": cooking_reason,
         "updated_at": row.get("updated_at", ""),
         "detail_shortest_lease": row.get("detail_shortest_lease", ""),
         "detail_rules": row.get("detail_rules", ""),
@@ -662,6 +663,9 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const metroStation = item.nearest_metro_station
         ? `最近捷運：${{item.nearest_metro_station}}站 · 步行約 ${{item.nearest_metro_walk_minutes}} 分鐘`
         : '最近捷運：待補';
+      const cookingReason = item.cooking_convenience_reason
+        ? `可煮飯判斷：${{item.cooking_convenience_reason}}`
+        : '可煮飯判斷：待補';
       const details = [
         item.detail_shortest_lease ? `最短租期：${{item.detail_shortest_lease}}` : '',
         item.detail_deposit ? `押金：${{item.detail_deposit}}` : '',
@@ -682,6 +686,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
             <div class="meta">${{formatNumber(item.price)}} 元 / 月 · ${{floorArea}} · ${{item.area || '路段待補'}}</div>
             <div class="meta-sub">${{commute}}</div>
             <div class="meta-sub">${{metroStation}}</div>
+            <div class="meta-sub">${{cookingReason}}</div>
             <div class="meta-sub">${{details || '細節待補'}}</div>
             <div class="desc">${{item.description || '目前沒有額外描述。'}}</div>
             ${{rules}}

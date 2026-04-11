@@ -144,17 +144,17 @@ def test_cooking_convenience_profile_levels():
     assert cooking_convenience_profile({
         "description": "廚房有流理台、電磁爐，可正常備餐",
         "images": "",
-    }) == (3, "適合煮飯")
+    }) == (3, "適合煮飯", "文字同時提到流理臺與可煮飯設備")
 
     assert cooking_convenience_profile({
         "description": "有流理台",
         "images": "",
-    }) == (2, "可勉強煮")
+    }) == (2, "可勉強煮", "文字明確提到流理臺，但可煮飯設備描述較少")
 
     assert cooking_convenience_profile({
         "description": "沒有提到廚房",
         "images": "https://img/1.jpg",
-    }) == (1, "看圖確認")
+    }) == (1, "看圖確認", "文字不夠明確，需從圖片判斷廚房可用性")
 
 
 def test_analyze_listings_filters_and_scores_with_geocoder(tmp_path):

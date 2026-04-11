@@ -97,6 +97,7 @@ ANALYSIS_FIELDNAMES = [
     "commute_metro_minutes",
     "cooking_convenience_score",
     "cooking_convenience_label",
+    "cooking_convenience_reason",
     "kitchen_sink_signal",
     "needs_image_review",
     "matched_reasons",
@@ -267,11 +268,11 @@ def parse_images(value: str | None) -> list[str]:
 
 
 def has_kitchen_sink_signal(row: dict[str, str]) -> bool:
-    score, _ = cooking_convenience_profile(row)
+    score, _, _ = cooking_convenience_profile(row)
     return score >= 2
 
 
-def cooking_convenience_profile(row: dict[str, str]) -> tuple[int, str]:
+def cooking_convenience_profile(row: dict[str, str]) -> tuple[int, str, str]:
     text = listing_text(row)
     has_explicit_sink = any(keyword.lower() in text for keyword in KITCHEN_SINK_EXPLICIT_KEYWORDS)
     has_ambiguous_sink = any(keyword.lower() in text for keyword in KITCHEN_SINK_AMBIGUOUS_KEYWORDS)
@@ -282,20 +283,20 @@ def cooking_convenience_profile(row: dict[str, str]) -> tuple[int, str]:
     has_images = bool(parse_images(row.get("images")))
 
     if has_explicit_sink and (has_stove or has_cooking_permission or has_kitchen_context):
-        return 3, "適合煮飯"
+        return 3, "適合煮飯", "文字同時提到流理臺與可煮飯設備"
     if has_explicit_sink:
-        return 2, "可勉強煮"
+        return 2, "可勉強煮", "文字明確提到流理臺，但可煮飯設備描述較少"
     if has_ambiguous_sink and has_kitchen_context and not has_bathroom_context:
-        return 2, "可勉強煮"
+        return 2, "可勉強煮", "文字提到水槽且上下文偏向廚房"
     if has_stove and (has_kitchen_context or has_cooking_permission):
-        return 2, "可勉強煮"
+        return 2, "可勉強煮", "文字提到爐具或可開伙，但未明講流理臺"
     if has_images:
-        return 1, "看圖確認"
-    return 0, "未提及"
+        return 1, "看圖確認", "文字不夠明確，需從圖片判斷廚房可用性"
+    return 0, "未提及", "文字沒有提供足夠的可煮飯資訊"
 
 
 def cooking_convenience_for_result(result: AnalysisResult) -> tuple[int, str]:
-    score, label = cooking_convenience_profile(result.row)
+    score, label, _ = cooking_convenience_profile(result.row)
     if score > 0:
         return score, label
     if result.kitchen_sink_signal:
@@ -303,6 +304,17 @@ def cooking_convenience_for_result(result: AnalysisResult) -> tuple[int, str]:
     if result.needs_image_review:
         return 1, "看圖確認"
     return 0, "未提及"
+
+
+def cooking_convenience_reason_for_result(result: AnalysisResult) -> str:
+    score, _, reason = cooking_convenience_profile(result.row)
+    if score > 0:
+        return reason
+    if result.kitchen_sink_signal:
+        return "文字至少顯示可勉強煮飯"
+    if result.needs_image_review:
+        return "文字不夠明確，改由圖片協助人工確認"
+    return "文字沒有提供足夠的可煮飯資訊"
 
 
 def build_listing_address(row: dict[str, str]) -> str:
@@ -417,7 +429,7 @@ def score_listing(
     if criteria.excluded_keywords and keyword_match_any(text, criteria.excluded_keywords):
         return None
 
-    cooking_score, cooking_label = cooking_convenience_profile(row)
+    cooking_score, cooking_label, cooking_reason = cooking_convenience_profile(row)
     kitchen_sink = cooking_score >= 2
     needs_image_review = False
     if criteria.require_kitchen_sink and not kitchen_sink:
@@ -477,6 +489,7 @@ def score_listing(
         score += min(image_count, 8) * 0.8
         reasons.append(f"{image_count} images")
 
+    reasons.append(cooking_reason)
     score = max(0, min(100, round(score, 1)))
 
     return AnalysisResult(
@@ -535,6 +548,7 @@ def export_analysis_results(results: list[AnalysisResult], output_path: str | Pa
         writer.writeheader()
         for idx, result in enumerate(results, 1):
             cooking_score, cooking_label = cooking_convenience_for_result(result)
+            cooking_reason = cooking_convenience_reason_for_result(result)
             writer.writerow(
                 {
                     "rank": idx,
@@ -550,6 +564,7 @@ def export_analysis_results(results: list[AnalysisResult], output_path: str | Pa
                     "commute_metro_minutes": result.commute_metro_minutes or "",
                     "cooking_convenience_score": cooking_score,
                     "cooking_convenience_label": cooking_label,
+                    "cooking_convenience_reason": cooking_reason,
                     "kitchen_sink_signal": "yes" if result.kitchen_sink_signal else "no",
                     "needs_image_review": "yes" if result.needs_image_review else "no",
                     "matched_reasons": " | ".join(result.matched_reasons),
