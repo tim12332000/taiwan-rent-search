@@ -295,7 +295,7 @@ def test_render_markdown_report_groups_direct_and_review_items():
         commute_best_minutes=15,
         kitchen_sink_signal=False,
         needs_image_review=True,
-        matched_reasons=["estimated commute 15 min", "kitchen sink not confirmed"],
+        matched_reasons=["estimated commute 15 min", "kitchen sink not mentioned in text"],
     )
 
     report = render_markdown_report([direct, review], criteria, "data/sample.csv")

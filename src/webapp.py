@@ -20,6 +20,8 @@ from .taipei_metro import find_nearest_station
 
 
 DEFAULT_SEARCH_APP_PATH = Path("data") / "search_app.html"
+SEARCH_SPEED_BUDGET_MS = 120
+SEARCH_SPEED_WARNING_MS = 250
 
 
 def build_search_app_output_path(input_path: str | Path) -> Path:
@@ -29,6 +31,33 @@ def build_search_app_output_path(input_path: str | Path) -> Path:
 
 def build_default_search_app_path() -> Path:
     return DEFAULT_SEARCH_APP_PATH
+
+
+def search_speed_score(duration_ms: float) -> int:
+    if duration_ms <= SEARCH_SPEED_BUDGET_MS:
+        return 100
+    if duration_ms >= SEARCH_SPEED_WARNING_MS:
+        return 40
+
+    span = SEARCH_SPEED_WARNING_MS - SEARCH_SPEED_BUDGET_MS
+    penalty = (duration_ms - SEARCH_SPEED_BUDGET_MS) / span
+    return round(100 - penalty * 60)
+
+
+def search_speed_label(duration_ms: float) -> str:
+    if duration_ms <= SEARCH_SPEED_BUDGET_MS:
+        return "順暢"
+    if duration_ms <= SEARCH_SPEED_WARNING_MS:
+        return "可接受"
+    return "偏慢"
+
+
+def search_speed_hint(duration_ms: float) -> str:
+    if duration_ms <= SEARCH_SPEED_BUDGET_MS:
+        return "目前搜尋速度在目標內。"
+    if duration_ms <= SEARCH_SPEED_WARNING_MS:
+        return "若想更快，可先縮小行政區、來源或租金範圍。"
+    return "建議先縮小條件，或先用目的地刷新較小的資料池。"
 
 
 def normalize_search_text(text: str | None) -> str:
@@ -413,7 +442,9 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
           <div class="metric">資料來源<strong id="count-platforms">0</strong></div>
           <div class="metric">文字提及流理臺<strong id="count-kitchen">0</strong></div>
           <div class="metric">平均月租<strong id="avg-price">-</strong></div>
+          <div class="metric">搜尋速度<strong id="search-speed">-</strong></div>
         </div>
+        <div id="speed-hint" class="meta-sub">搜尋速度目標：{SEARCH_SPEED_BUDGET_MS}ms 內。</div>
         <div id="results" class="results"></div>
         <div id="empty" class="empty" hidden>目前沒有符合條件的房源。</div>
       </section>
@@ -440,7 +471,12 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       countPlatforms: document.getElementById('count-platforms'),
       countKitchen: document.getElementById('count-kitchen'),
       avgPrice: document.getElementById('avg-price'),
+      searchSpeed: document.getElementById('search-speed'),
+      speedHint: document.getElementById('speed-hint'),
     }};
+    const SEARCH_SPEED_BUDGET_MS = {SEARCH_SPEED_BUDGET_MS};
+    const SEARCH_SPEED_WARNING_MS = {SEARCH_SPEED_WARNING_MS};
+    let filterFrame = null;
 
     const uniqueValues = (key) => [...new Set(listings.map(item => item[key]).filter(Boolean))].sort();
     const districts = uniqueValues('district');
@@ -646,7 +682,28 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       `;
     }}
 
+    function calculateSearchSpeedScore(durationMs) {{
+      if (durationMs <= SEARCH_SPEED_BUDGET_MS) return 100;
+      if (durationMs >= SEARCH_SPEED_WARNING_MS) return 40;
+      const span = SEARCH_SPEED_WARNING_MS - SEARCH_SPEED_BUDGET_MS;
+      const penalty = (durationMs - SEARCH_SPEED_BUDGET_MS) / span;
+      return Math.round(100 - penalty * 60);
+    }}
+
+    function searchSpeedLabel(durationMs) {{
+      if (durationMs <= SEARCH_SPEED_BUDGET_MS) return '順暢';
+      if (durationMs <= SEARCH_SPEED_WARNING_MS) return '可接受';
+      return '偏慢';
+    }}
+
+    function searchSpeedHint(durationMs) {{
+      if (durationMs <= SEARCH_SPEED_BUDGET_MS) return '目前搜尋速度在目標內。';
+      if (durationMs <= SEARCH_SPEED_WARNING_MS) return '若想更快，可先縮小行政區、來源或租金範圍。';
+      return '建議先縮小條件，或先用目的地刷新較小的資料池。';
+    }}
+
     function applyFilters() {{
+      const startedAt = performance.now();
       const q = els.q.value;
       const destination = resolveDestination(getDestinationQuery());
       const district = els.district.value;
@@ -657,10 +714,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const hasImages = els.hasImages.checked;
       const sortBy = els.sortBy.value;
 
-      let filtered = listings.map(item => ({{
-        ...item,
-        commute: getCommuteEstimate(item, destination),
-      }})).filter(item => {{
+      let filtered = listings.filter(item => {{
         if (!matchesQuery(item, q)) return false;
         if (district && item.district !== district) return false;
         if (platform && item.platform !== platform) return false;
@@ -670,6 +724,11 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         if (hasImages && !item.cover) return false;
         return true;
       }});
+
+      filtered = filtered.map(item => ({{
+        ...item,
+        commute: destination ? getCommuteEstimate(item, destination) : null,
+      }}));
 
       filtered.sort((a, b) => {{
         if (sortBy === 'updated-desc') return (b.updated_at || '').localeCompare(a.updated_at || '');
@@ -688,6 +747,18 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       els.countKitchen.textContent = String(filtered.filter(item => item.kitchen_sink_signal).length);
       const avg = filtered.length ? Math.round(filtered.reduce((sum, item) => sum + item.price, 0) / filtered.length) : null;
       els.avgPrice.textContent = avg ? `${{formatNumber(avg)}} 元` : '-';
+      const durationMs = performance.now() - startedAt;
+      const speedScore = calculateSearchSpeedScore(durationMs);
+      els.searchSpeed.textContent = `${{durationMs.toFixed(1)}}ms · ${{searchSpeedLabel(durationMs)}} · ${{speedScore}}分`;
+      els.speedHint.textContent = searchSpeedHint(durationMs);
+    }}
+
+    function scheduleApplyFilters() {{
+      if (filterFrame !== null) cancelAnimationFrame(filterFrame);
+      filterFrame = requestAnimationFrame(() => {{
+        filterFrame = null;
+        applyFilters();
+      }});
     }}
 
     fillSelect(els.district, uniqueValues('district'));
@@ -697,7 +768,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     if (initialQuery) els.q.value = initialQuery;
     if (initialDestination) els.destination.value = initialDestination;
     [els.q, els.destination, els.district, els.platform, els.maxPrice, els.minArea, els.kitchenOnly, els.hasImages, els.sortBy]
-      .forEach(el => el.addEventListener('input', applyFilters));
+      .forEach(el => el.addEventListener('input', scheduleApplyFilters));
     applyFilters();
   </script>
 </body>

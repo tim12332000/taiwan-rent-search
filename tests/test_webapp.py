@@ -12,6 +12,9 @@ from src.webapp import (
     listing_to_view_model,
     prepare_listing_view_models,
     render_search_app_html,
+    search_speed_hint,
+    search_speed_label,
+    search_speed_score,
 )
 
 
@@ -166,6 +169,10 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "只看文字明確提到流理臺" in html_text
     assert "文字提及流理臺" in html_text
     assert "看圖確認" in html_text
+    assert "搜尋速度" in html_text
+    assert "performance.now()" in html_text
+    assert "calculateSearchSpeedScore" in html_text
+    assert "requestAnimationFrame" in html_text
 
 
 def test_build_search_app_output_path_uses_input_stem():
@@ -207,3 +214,18 @@ def test_export_search_app_also_updates_stable_entry(tmp_path, monkeypatch):
     text = stable.read_text(encoding="utf-8")
     assert "<!doctype html>" in text.lower()
     assert "可開伙套房" in text
+
+
+def test_search_speed_score_thresholds():
+    assert search_speed_score(80) == 100
+    assert search_speed_score(300) == 40
+    assert 40 < search_speed_score(180) < 100
+
+
+def test_search_speed_labels_and_hints():
+    assert search_speed_label(80) == "順暢"
+    assert search_speed_label(180) == "可接受"
+    assert search_speed_label(300) == "偏慢"
+    assert search_speed_hint(80) == "目前搜尋速度在目標內。"
+    assert "縮小行政區" in search_speed_hint(180)
+    assert "目的地刷新較小的資料池" in search_speed_hint(300)
