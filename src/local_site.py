@@ -10,12 +10,13 @@ import webbrowser
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from .analysis import NominatimGeocoder, extract_district_from_text
 from .local_site_state import clear_local_site_state, write_local_site_state
 from .smart_search import refresh_search_for_destination
-from .webapp import build_default_search_app_path
+from .webapp import build_default_search_app_path, export_search_app, latest_dataset_path
 
 
 @dataclass
@@ -188,8 +189,30 @@ def run_refresh_job(job_id: str) -> None:
         )
 
 
-def build_index_html(destination: str = "") -> str:
+def ensure_default_search_app() -> tuple[str | None, str, bool]:
+    stable_path = build_default_search_app_path()
+    try:
+        dataset_path = latest_dataset_path()
+    except FileNotFoundError:
+        return (str(stable_path) if stable_path.exists() else None, "", False)
+
+    needs_refresh = (
+        not stable_path.exists()
+        or dataset_path.stat().st_mtime_ns > stable_path.stat().st_mtime_ns
+    )
+    if needs_refresh:
+        export_search_app(dataset_path, stable_path)
+        return str(stable_path), dataset_path.name, True
+    return str(stable_path), dataset_path.name, False
+
+
+def build_index_html(destination: str = "", app_ready: bool = True, app_source: str = "") -> str:
     escaped_destination = json.dumps(destination, ensure_ascii=False)
+    helper_text = (
+        f"已載入最新資料：{app_source}"
+        if app_ready and app_source
+        else "還沒有可用的資料頁，先輸入目的地並按「更新資料」。"
+    )
     return f"""<!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -332,6 +355,7 @@ def build_index_html(destination: str = "") -> str:
       <section class="panel">
         <h1>租屋搜尋控制台</h1>
         <p>在這裡輸入目的地，按一次就會更新較相關的資料池，然後直接刷新下面的搜尋頁。</p>
+        <div class="status">{helper_text}</div>
         <div class="controls">
           <input id="destination" type="search" placeholder="例如：台北市信義區松仁路100號" />
           <button id="refresh" class="primary" type="button">更新資料</button>
@@ -512,17 +536,17 @@ class LocalSiteHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
         destination = params.get("destination", [""])[0]
+        app_path, app_source, generated = ensure_default_search_app()
 
         if parsed.path == "/":
-            self._send_html(build_index_html(destination))
+            self._send_html(build_index_html(destination, app_ready=bool(app_path), app_source=app_source))
             return
 
         if parsed.path == "/app":
-            app_path = build_default_search_app_path()
-            if not app_path.exists():
+            if not app_path:
                 self._send_html("<h1>尚未產生搜尋頁</h1><p>請先按上方的更新資料。</p>", status=HTTPStatus.NOT_FOUND)
                 return
-            self._send_file(app_path)
+            self._send_file(Path(app_path))
             return
 
         if parsed.path == "/api/status":

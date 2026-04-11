@@ -4,6 +4,7 @@ from src.local_site import (
     build_job_payload,
     build_json_response,
     create_refresh_job,
+    ensure_default_search_app,
     resolve_destination_payload,
     update_refresh_job,
 )
@@ -42,6 +43,12 @@ def test_build_index_html_contains_controls_and_iframe():
     assert "syncDestinationToFrame" in html
     assert "withCacheBuster" in html
     assert "台北市信義區松仁路100號" in html
+
+
+def test_build_index_html_shows_missing_data_hint():
+    html = build_index_html(app_ready=False)
+
+    assert "還沒有可用的資料頁" in html
 
 
 def test_build_json_response_emits_utf8_json_bytes():
@@ -103,3 +110,35 @@ def test_local_site_state_round_trip(monkeypatch, tmp_path):
 
     clear_local_site_state("127.0.0.1", 9876)
     assert not state_path.exists()
+
+
+def test_ensure_default_search_app_uses_latest_dataset(monkeypatch, tmp_path):
+    stable = tmp_path / "search_app.html"
+    dataset = tmp_path / "latest.csv"
+    dataset.write_text("id\n1\n", encoding="utf-8")
+    calls = []
+
+    monkeypatch.setattr("src.local_site.build_default_search_app_path", lambda: stable)
+    monkeypatch.setattr("src.local_site.latest_dataset_path", lambda: dataset)
+    monkeypatch.setattr("src.local_site.export_search_app", lambda input_path, output_path=None: calls.append((input_path, output_path)) or stable)
+
+    app_path, source_name, generated = ensure_default_search_app()
+
+    assert app_path == str(stable)
+    assert source_name == "latest.csv"
+    assert generated is True
+    assert calls == [(dataset, stable)]
+
+
+def test_ensure_default_search_app_returns_existing_stable_when_no_dataset(monkeypatch, tmp_path):
+    stable = tmp_path / "search_app.html"
+    stable.write_text("ok", encoding="utf-8")
+
+    monkeypatch.setattr("src.local_site.build_default_search_app_path", lambda: stable)
+    monkeypatch.setattr("src.local_site.latest_dataset_path", lambda: (_ for _ in ()).throw(FileNotFoundError("missing")))
+
+    app_path, source_name, generated = ensure_default_search_app()
+
+    assert app_path == str(stable)
+    assert source_name == ""
+    assert generated is False

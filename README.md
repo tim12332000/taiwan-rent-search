@@ -35,6 +35,19 @@ taiwan-rent-search/
 pip install -r requirements.txt
 ```
 
+## 最簡單用法
+
+```bash
+# Windows：直接打開本機搜尋站
+.\open_search_app.ps1
+
+# Windows：輸入目的地，會自動啟動本機搜尋站並刷新較相關的資料
+.\search_by_destination.ps1
+```
+
+現在優先推薦把這個專案當成「本機租屋控制台」來用，不需要先手動產生 `search_app.html`。
+只要資料夾裡已經有最新的 CSV，打開本機網站時會自動把它轉成固定入口頁；如果還沒有，你也可以直接在控制台裡輸入目的地並按「更新資料」。
+
 ## 使用
 
 ```bash
