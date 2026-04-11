@@ -14,6 +14,7 @@ from src.analysis import (
     build_analysis_output_path,
     build_html_output_path,
     build_report_output_path,
+    cooking_convenience_profile,
     extract_county_from_text,
     extract_district_from_text,
     export_analysis_results,
@@ -137,6 +138,23 @@ def test_has_kitchen_sink_signal_accepts_kitchen_sink_context():
     }
 
     assert has_kitchen_sink_signal(row) is True
+
+
+def test_cooking_convenience_profile_levels():
+    assert cooking_convenience_profile({
+        "description": "廚房有流理台、電磁爐，可正常備餐",
+        "images": "",
+    }) == (3, "適合煮飯")
+
+    assert cooking_convenience_profile({
+        "description": "有流理台",
+        "images": "",
+    }) == (2, "可勉強煮")
+
+    assert cooking_convenience_profile({
+        "description": "沒有提到廚房",
+        "images": "https://img/1.jpg",
+    }) == (1, "看圖確認")
 
 
 def test_analyze_listings_filters_and_scores_with_geocoder(tmp_path):
@@ -277,7 +295,7 @@ def test_format_listing_line_contains_human_readable_summary():
     assert "mixrent" in line
     assert "信義區" in line
     assert "通勤 8 分" in line
-    assert "流理臺 文字提及" in line
+    assert "可煮飯方便程度 可勉強煮" in line
 
 
 def test_render_markdown_report_groups_direct_and_review_items():
@@ -325,12 +343,12 @@ def test_render_markdown_report_groups_direct_and_review_items():
     report = render_markdown_report([direct, review], criteria, "data/sample.csv")
 
     assert "# 租屋快速瀏覽報告" in report
-    assert "## 文字提及流理臺" in report
+    assert "## 較適合煮飯" in report
     assert "## 看圖確認" in report
     assert "可開伙套房" in report
     assert "待確認套房" in report
     assert "來源分布" in report
-    assert "文字提及流理臺" in report
+    assert "文字明確較適合煮飯" in report
 
 
 def test_export_markdown_report_writes_file(tmp_path):
@@ -388,7 +406,7 @@ def test_render_html_report_contains_image_and_sections():
 
     assert "<!doctype html>" in report.lower()
     assert "租屋快速瀏覽報告" in report
-    assert "文字提及流理臺" in report
+    assert "文字明確較適合煮飯" in report
     assert "https://img/1.jpg" in report
     assert "可開伙套房" in report
     assert "來源分布" in report

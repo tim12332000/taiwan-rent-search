@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .analysis import (
     TAIPEI_DISTRICT_CENTERS,
+    cooking_convenience_profile,
     district_center,
     has_kitchen_sink_signal,
     latest_dataset_path,
@@ -79,6 +80,7 @@ def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
     address = build_listing_address(row)
     center = district_center(row.get("location_district", ""))
     nearest_station = find_nearest_station(center.lat if center else None, center.lon if center else None)
+    cooking_score, cooking_label = cooking_convenience_profile(row)
     search_text = " ".join(
         part for part in [
             row.get("platform", ""),
@@ -117,6 +119,8 @@ def listing_to_view_model(row: dict[str, str]) -> dict[str, object]:
         "images": images,
         "cover": images[0] if images else "",
         "kitchen_sink_signal": has_kitchen_sink_signal(row),
+        "cooking_convenience_score": cooking_score,
+        "cooking_convenience_label": cooking_label,
         "updated_at": row.get("updated_at", ""),
         "detail_shortest_lease": row.get("detail_shortest_lease", ""),
         "detail_rules": row.get("detail_rules", ""),
@@ -378,7 +382,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
   <main class="page">
     <section class="hero">
       <h1>租屋即時搜尋</h1>
-      <p>不用再翻 CSV。這個頁面把最新資料池直接嵌進來，你可以即時輸入關鍵字、切來源、行政區、租金上限、坪數下限和圖片條件，候選會立刻更新。</p>
+      <p>不用再翻 CSV。這個頁面把最新資料池直接嵌進來，你可以即時輸入關鍵字、切來源、行政區、租金上限、坪數下限和可煮飯方便程度，候選會立刻更新。</p>
       <div class="hero-meta">
         <span>來源資料：{source_name}</span>
         <span>即時過濾：前端本地運算</span>
@@ -419,7 +423,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         </div>
         <label class="check">
           <input id="kitchen-only" type="checkbox" />
-          只看文字明確提到流理臺
+          只看較適合煮飯
         </label>
         <label class="check">
           <input id="has-images" type="checkbox" />
@@ -428,6 +432,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         <div class="field">
           <label for="sort-by">排序</label>
           <select id="sort-by">
+            <option value="cooking-desc">可煮飯方便程度優先</option>
             <option value="price-asc">租金由低到高</option>
             <option value="price-desc">租金由高到低</option>
             <option value="area-desc">坪數由大到小</option>
@@ -440,7 +445,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         <div class="summary">
           <div class="metric">目前顯示<strong id="count-visible">0</strong></div>
           <div class="metric">資料來源<strong id="count-platforms">0</strong></div>
-          <div class="metric">文字提及流理臺<strong id="count-kitchen">0</strong></div>
+          <div class="metric">較適合煮飯<strong id="count-kitchen">0</strong></div>
           <div class="metric">平均月租<strong id="avg-price">-</strong></div>
           <div class="metric">搜尋速度<strong id="search-speed">-</strong></div>
         </div>
@@ -644,7 +649,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const image = item.cover
         ? `<img src="${{item.cover}}" alt="${{item.title}}" loading="lazy">`
         : `<div class="placeholder">無圖片</div>`;
-      const kitchen = item.kitchen_sink_signal ? '文字提及流理臺' : '看圖確認';
+      const kitchen = item.cooking_convenience_label || '未提及';
       const floorArea = item.floor_area ? `${{item.floor_area}}坪` : '坪數待補';
       const commute = item.commute
         ? `估通勤 ${{item.commute.bestMinutes}} 分鐘 · 單車 ${{item.commute.bikeMinutes}} / 捷運 ${{item.commute.metroMinutes}}`
@@ -666,7 +671,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
             <div class="listing-top">
               <span class="chip">來源 ${{item.platform}}</span>
               <span class="chip">${{item.district || '未知區域'}}</span>
-              <span class="chip">${{kitchen}}</span>
+              <span class="chip">可煮飯：${{kitchen}}</span>
             </div>
             <h3 class="title">${{item.title}}</h3>
             <div class="meta">${{formatNumber(item.price)}} 元 / 月 · ${{floorArea}} · ${{item.area || '路段待補'}}</div>
@@ -720,7 +725,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         if (platform && item.platform !== platform) return false;
         if (maxPrice && item.price > maxPrice) return false;
         if (minArea && (!item.floor_area || item.floor_area < minArea)) return false;
-        if (kitchenOnly && !item.kitchen_sink_signal) return false;
+        if (kitchenOnly && item.cooking_convenience_score < 2) return false;
         if (hasImages && !item.cover) return false;
         return true;
       }});
@@ -732,6 +737,9 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
 
       filtered.sort((a, b) => {{
         if (sortBy === 'updated-desc') return (b.updated_at || '').localeCompare(a.updated_at || '');
+        if (sortBy === 'cooking-desc' && a.cooking_convenience_score !== b.cooking_convenience_score) {{
+          return b.cooking_convenience_score - a.cooking_convenience_score;
+        }}
         if (destination && a.commute && b.commute && a.commute.bestMinutes !== b.commute.bestMinutes) {{
           return a.commute.bestMinutes - b.commute.bestMinutes;
         }}
@@ -744,7 +752,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       els.empty.hidden = filtered.length !== 0;
       els.countVisible.textContent = String(filtered.length);
       els.countPlatforms.textContent = String(new Set(filtered.map(item => item.platform)).size);
-      els.countKitchen.textContent = String(filtered.filter(item => item.kitchen_sink_signal).length);
+      els.countKitchen.textContent = String(filtered.filter(item => item.cooking_convenience_score >= 2).length);
       const avg = filtered.length ? Math.round(filtered.reduce((sum, item) => sum + item.price, 0) / filtered.length) : null;
       els.avgPrice.textContent = avg ? `${{formatNumber(avg)}} 元` : '-';
       const durationMs = performance.now() - startedAt;

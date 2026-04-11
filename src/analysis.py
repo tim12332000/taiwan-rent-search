@@ -59,8 +59,6 @@ KITCHEN_CONTEXT_KEYWORDS = (
     "備餐",
     "瓦斯爐",
     "電磁爐",
-    "流理台",
-    "流理臺",
 )
 BATHROOM_CONTEXT_KEYWORDS = (
     "浴室",
@@ -73,6 +71,16 @@ BATHROOM_CONTEXT_KEYWORDS = (
     "洗面台",
     "洗手台",
     "面盆",
+)
+COOKING_PERMISSION_KEYWORDS = (
+    "可開伙",
+    "可炊",
+    "開伙",
+)
+STOVE_KEYWORDS = (
+    "瓦斯爐",
+    "電磁爐",
+    "ih爐",
 )
 
 ANALYSIS_FIELDNAMES = [
@@ -257,17 +265,42 @@ def parse_images(value: str | None) -> list[str]:
 
 
 def has_kitchen_sink_signal(row: dict[str, str]) -> bool:
+    score, _ = cooking_convenience_profile(row)
+    return score >= 2
+
+
+def cooking_convenience_profile(row: dict[str, str]) -> tuple[int, str]:
     text = listing_text(row)
     has_explicit_sink = any(keyword.lower() in text for keyword in KITCHEN_SINK_EXPLICIT_KEYWORDS)
     has_ambiguous_sink = any(keyword.lower() in text for keyword in KITCHEN_SINK_AMBIGUOUS_KEYWORDS)
     has_kitchen_context = any(keyword.lower() in text for keyword in KITCHEN_CONTEXT_KEYWORDS)
     has_bathroom_context = any(keyword.lower() in text for keyword in BATHROOM_CONTEXT_KEYWORDS)
+    has_cooking_permission = any(keyword.lower() in text for keyword in COOKING_PERMISSION_KEYWORDS)
+    has_stove = any(keyword.lower() in text for keyword in STOVE_KEYWORDS)
+    has_images = bool(parse_images(row.get("images")))
 
+    if has_explicit_sink and (has_stove or has_cooking_permission or has_kitchen_context):
+        return 3, "適合煮飯"
     if has_explicit_sink:
-        return True
+        return 2, "可勉強煮"
     if has_ambiguous_sink and has_kitchen_context and not has_bathroom_context:
-        return True
-    return False
+        return 2, "可勉強煮"
+    if has_stove and (has_kitchen_context or has_cooking_permission):
+        return 2, "可勉強煮"
+    if has_images:
+        return 1, "看圖確認"
+    return 0, "未提及"
+
+
+def cooking_convenience_for_result(result: AnalysisResult) -> tuple[int, str]:
+    score, label = cooking_convenience_profile(result.row)
+    if score > 0:
+        return score, label
+    if result.kitchen_sink_signal:
+        return 2, "可勉強煮"
+    if result.needs_image_review:
+        return 1, "看圖確認"
+    return 0, "未提及"
 
 
 def build_listing_address(row: dict[str, str]) -> str:
@@ -382,7 +415,8 @@ def score_listing(
     if criteria.excluded_keywords and keyword_match_any(text, criteria.excluded_keywords):
         return None
 
-    kitchen_sink = has_kitchen_sink_signal(row)
+    cooking_score, cooking_label = cooking_convenience_profile(row)
+    kitchen_sink = cooking_score >= 2
     needs_image_review = False
     if criteria.require_kitchen_sink and not kitchen_sink:
         if criteria.strict_features:
@@ -424,11 +458,17 @@ def score_listing(
         score += min(area, 20) * 0.8
         reasons.append(f"area {area} ping")
 
-    if kitchen_sink:
+    if cooking_score >= 3:
+        score += 8
+        reasons.append("cooking-friendly setup mentioned in text")
+    elif cooking_score >= 2:
         score += 4
-        reasons.append("kitchen sink mentioned in text")
+        reasons.append("basic cooking setup mentioned in text")
     elif criteria.require_kitchen_sink:
-        reasons.append("kitchen sink not mentioned in text")
+        if cooking_score == 1:
+            reasons.append("review images for cooking convenience")
+        else:
+            reasons.append("cooking convenience not mentioned")
 
     image_count = len(parse_images(row.get("images")))
     if image_count:
@@ -522,11 +562,11 @@ def format_listing_line(result: AnalysisResult) -> str:
     price = result.row.get("price", "?")
     floor_area = result.row.get("floor_area", "") or "?"
     commute = result.commute_best_minutes if result.commute_best_minutes is not None else "n/a"
-    kitchen = "文字提及" if result.kitchen_sink_signal else "看圖確認" if result.needs_image_review else "未提及"
+    _, kitchen = cooking_convenience_for_result(result)
     band = score_band(result.score)
     return (
         f"**{band}級** | {platform} | {district} | {area} | ${price}/月 | {floor_area}坪 | "
-        f"通勤 {commute} 分 | 流理臺 {kitchen}"
+        f"通勤 {commute} 分 | 可煮飯方便程度 {kitchen}"
     )
 
 
@@ -551,16 +591,16 @@ def render_markdown_report(
         f"- 候選總數: `{len(results)}`",
         f"- 可直接看: `{summary.direct_count}`",
         f"- 看圖確認: `{summary.review_count}`",
-        f"- 文字提及流理臺: `{summary.kitchen_confirmed_count}`",
+        f"- 文字明確較適合煮飯: `{summary.kitchen_confirmed_count}`",
         f"- 有圖片: `{summary.with_images_count}`",
         f"- 平均月租: `{summary.average_price if summary.average_price is not None else '未統計'}`",
         f"- 來源分布: `{', '.join(f'{k}:{v}' for k, v in summary.platform_counts.items())}`",
         f"- 目的地: `{criteria.destination_address or '未指定'}`",
         f"- 通勤模式: `{criteria.transport_mode}`",
         f"- 最長通勤: `{criteria.max_commute_minutes if criteria.max_commute_minutes is not None else '未限制'}`",
-        f"- 流理臺偏好: `{'看文字提及，否則看圖確認' if criteria.require_kitchen_sink else '未要求'}`",
+        f"- 可煮飯偏好: `{'優先找較適合煮飯，否則看圖確認' if criteria.require_kitchen_sink else '未要求'}`",
         "",
-        "## 文字提及流理臺",
+        "## 較適合煮飯",
     ]
 
     if direct:
@@ -574,7 +614,7 @@ def render_markdown_report(
                 ]
             )
     else:
-        lines.append("目前沒有文字明確提及流理臺的物件。")
+        lines.append("目前沒有文字明確顯示較適合煮飯的物件。")
 
     lines.extend(["", "## 看圖確認"])
     if review:
@@ -603,7 +643,7 @@ def render_result_card(result: AnalysisResult) -> str:
     price = html.escape(result.row.get("price", "?"))
     floor_area = html.escape(result.row.get("floor_area", "") or "?")
     commute = str(result.commute_best_minutes) if result.commute_best_minutes is not None else "n/a"
-    kitchen = "文字提及" if result.kitchen_sink_signal else "看圖確認" if result.needs_image_review else "未提及"
+    _, kitchen = cooking_convenience_for_result(result)
     reason_text = html.escape("；".join(result.matched_reasons))
     band = score_band(result.score)
     badge_class = f"band-{band.lower()}"
@@ -625,7 +665,7 @@ def render_result_card(result: AnalysisResult) -> str:
           <span class="band {badge_class}">{band}級</span>
           <span class="score">來源 {platform}</span>
           <span class="score">分數 {result.score}</span>
-          <span class="kitchen">流理臺 {html.escape(kitchen)}</span>
+          <span class="kitchen">可煮飯 {html.escape(kitchen)}</span>
         </div>
         <h3>{title}</h3>
         <p class="meta">{district} / {area_name} / ${price} / {floor_area}坪 / 通勤 {commute} 分</p>
@@ -795,16 +835,16 @@ def render_html_report(
         <li>來源資料：{html.escape(Path(input_path).name)}</li>
         <li>候選總數：{len(results)}</li>
         <li>可直接看：{summary.direct_count}　看圖確認：{summary.review_count}</li>
-        <li>文字提及流理臺：{summary.kitchen_confirmed_count}　有圖片：{summary.with_images_count}</li>
+        <li>文字明確較適合煮飯：{summary.kitchen_confirmed_count}　有圖片：{summary.with_images_count}</li>
         <li>平均月租：{summary.average_price if summary.average_price is not None else '未統計'} 元</li>
         <li>來源分布：{html.escape(platform_text)}</li>
         <li>目的地：{html.escape(criteria.destination_address or "未指定")}</li>
         <li>通勤模式：{html.escape(criteria.transport_mode)}</li>
         <li>最長通勤：{criteria.max_commute_minutes if criteria.max_commute_minutes is not None else "未限制"}</li>
-        <li>流理臺偏好：{"看文字提及，否則看圖確認" if criteria.require_kitchen_sink else "未要求"}</li>
+        <li>可煮飯偏好：{"優先找較適合煮飯，否則看圖確認" if criteria.require_kitchen_sink else "未要求"}</li>
       </ul>
     </header>
-    {section_html("文字提及流理臺", direct, "目前沒有文字明確提及流理臺的物件。")}
+    {section_html("較適合煮飯", direct, "目前沒有文字明確顯示較適合煮飯的物件。")}
     {section_html("看圖確認", review, "目前沒有需要額外看圖確認的物件。")}
   </main>
 </body>
@@ -885,7 +925,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--district", action="append", default=[], help="限定行政區，可重複傳入")
     parser.add_argument("--require-keyword", action="append", default=[], help="必須出現在文本中的關鍵字")
     parser.add_argument("--exclude-keyword", action="append", default=[], help="排除關鍵字")
-    parser.add_argument("--require-kitchen-sink", action="store_true", help="優先找文字明確提到流理臺的物件；未提及者標成看圖確認")
+    parser.add_argument("--require-kitchen-sink", action="store_true", help="優先找較適合煮飯的物件；文字不夠明確時標成看圖確認")
     parser.add_argument("--strict-features", action="store_true", help="必要設施未確認時直接排除")
     parser.add_argument("--max-commute", type=int, help="最長可接受通勤分鐘數")
     parser.add_argument("--transport-mode", choices=["either", "metro", "bike"], default="either")

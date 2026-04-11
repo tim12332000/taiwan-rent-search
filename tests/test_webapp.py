@@ -102,6 +102,8 @@ def test_listing_to_view_model_extracts_cover_and_search_text():
     assert model["nearest_metro_station"] == "台北101/世貿"
     assert model["nearest_metro_walk_minutes"] == 5
     assert model["kitchen_sink_signal"] is True
+    assert model["cooking_convenience_score"] == 3
+    assert model["cooking_convenience_label"] == "適合煮飯"
     assert "台北市" in model["search_text"]
     assert "信義區" in model["search_text"]
     assert "最短租期一年" in model["search_text"]
@@ -128,6 +130,7 @@ def test_listing_to_view_model_does_not_treat_cooking_allowed_as_sink_signal():
     model = listing_to_view_model(row)
 
     assert model["kitchen_sink_signal"] is False
+    assert model["cooking_convenience_score"] in {0, 1}
 
 
 def test_prepare_listing_view_models_reads_csv(tmp_path):
@@ -166,10 +169,12 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "inferDistrictFromListings" in html_text
     assert "latParam === null ? NaN : Number(latParam)" in html_text
     assert "const [districtLat, districtLon] = districtCenters[district]" in html_text
-    assert "只看文字明確提到流理臺" in html_text
-    assert "文字提及流理臺" in html_text
-    assert "看圖確認" in html_text
+    assert "只看較適合煮飯" in html_text
+    assert "較適合煮飯" in html_text
     assert "只看有圖片（方便手動看廚房）" in html_text
+    assert "可煮飯方便程度優先" in html_text
+    assert "cooking_convenience_score" in html_text
+    assert "可煮飯：" in html_text
     assert "搜尋速度" in html_text
     assert "performance.now()" in html_text
     assert "calculateSearchSpeedScore" in html_text
