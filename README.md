@@ -95,6 +95,7 @@ python -m src.smart_search --destination-address "台北市信義區松仁路100
 固定入口檔案是 `data/search_app.html`。現在更推薦直接啟動本機網站，因為可以在網頁裡按「更新資料」而不是回到命令列。
 `open_search_app` 會優先重用既有的本機搜尋站；如果預設的 `8765` 埠已被別的程式佔用，會改用其他可用埠，而不會先把對方殺掉。
 如果本機搜尋站正在執行，`search_by_destination` / `python -m src.smart_search --open` 也會自動重用那個站點並直接打開對應搜尋頁。
+如果本機搜尋站還沒啟動，`search_by_destination.ps1` / `.bat` 也會先幫你把它啟起來，再做目的地更新。
 `python -m src.main ...` 在匯出後也會直接印出資料品質摘要，例如來源分布、圖片覆蓋率、樓層資訊覆蓋率與詳頁補強覆蓋率，方便快速判斷這份資料池是否值得繼續分析。
 
 ## 進度

@@ -8,6 +8,7 @@ if "%DEST%"=="" (
   exit /b 1
 )
 
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0open_search_app.ps1" -NoBrowser
 python -m src.smart_search --destination-address "%DEST%" --open
 
 endlocal

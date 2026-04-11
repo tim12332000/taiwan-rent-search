@@ -1,3 +1,7 @@
+param(
+    [switch]$NoBrowser
+)
+
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -62,4 +66,6 @@ if (-not (Test-LocalSite -Port $port)) {
 }
 
 $siteUrl = "http://127.0.0.1:{0}/" -f $port
-Start-Process $siteUrl
+if (-not $NoBrowser) {
+    Start-Process $siteUrl
+}

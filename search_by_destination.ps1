@@ -9,4 +9,5 @@ if ([string]::IsNullOrWhiteSpace($destination)) {
     exit 1
 }
 
+& (Join-Path $repoRoot "open_search_app.ps1") -NoBrowser
 python -m src.smart_search --destination-address $destination --open
