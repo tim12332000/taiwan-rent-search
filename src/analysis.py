@@ -126,6 +126,7 @@ class SearchCriteria:
     destination_lon: float | None = None
     max_price: int | None = None
     min_area: float | None = None
+    min_cooking_convenience_score: int = 0
     districts: list[str] = field(default_factory=list)
     required_keywords: list[str] = field(default_factory=list)
     excluded_keywords: list[str] = field(default_factory=list)
@@ -306,6 +307,16 @@ def cooking_convenience_for_result(result: AnalysisResult) -> tuple[int, str]:
     return 0, "未提及"
 
 
+def cooking_convenience_level_name(level: int) -> str:
+    if level >= 3:
+        return "適合煮飯"
+    if level == 2:
+        return "至少可勉強煮"
+    if level == 1:
+        return "至少看圖確認"
+    return "未要求"
+
+
 def cooking_convenience_reason_for_result(result: AnalysisResult) -> str:
     score, _, reason = cooking_convenience_profile(result.row)
     if score > 0:
@@ -431,6 +442,10 @@ def score_listing(
 
     cooking_score, cooking_label, cooking_reason = cooking_convenience_profile(row)
     kitchen_sink = cooking_score >= 2
+    explicit_minimum_cooking_level = criteria.min_cooking_convenience_score
+    if explicit_minimum_cooking_level and cooking_score < explicit_minimum_cooking_level:
+        return None
+
     needs_image_review = False
     if criteria.require_kitchen_sink and not kitchen_sink:
         if criteria.strict_features:
@@ -618,7 +633,7 @@ def render_markdown_report(
         f"- 目的地: `{criteria.destination_address or '未指定'}`",
         f"- 通勤模式: `{criteria.transport_mode}`",
         f"- 最長通勤: `{criteria.max_commute_minutes if criteria.max_commute_minutes is not None else '未限制'}`",
-        f"- 可煮飯偏好: `{'優先找較適合煮飯，否則看圖確認' if criteria.require_kitchen_sink else '未要求'}`",
+        f"- 可煮飯門檻: `{cooking_convenience_level_name(max(criteria.min_cooking_convenience_score, 2 if criteria.require_kitchen_sink else 0))}`",
         "",
         "## 較適合煮飯",
     ]
@@ -861,7 +876,7 @@ def render_html_report(
         <li>目的地：{html.escape(criteria.destination_address or "未指定")}</li>
         <li>通勤模式：{html.escape(criteria.transport_mode)}</li>
         <li>最長通勤：{criteria.max_commute_minutes if criteria.max_commute_minutes is not None else "未限制"}</li>
-        <li>可煮飯偏好：{"優先找較適合煮飯，否則看圖確認" if criteria.require_kitchen_sink else "未要求"}</li>
+        <li>可煮飯門檻：{html.escape(cooking_convenience_level_name(max(criteria.min_cooking_convenience_score, 2 if criteria.require_kitchen_sink else 0)))}</li>
       </ul>
     </header>
     {section_html("較適合煮飯", direct, "目前沒有文字明確顯示較適合煮飯的物件。")}
@@ -947,6 +962,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--exclude-keyword", action="append", default=[], help="排除關鍵字")
     parser.add_argument("--require-kitchen-sink", action="store_true", help="優先找較適合煮飯的物件；文字不夠明確時標成看圖確認")
     parser.add_argument("--require-cooking-friendly", action="store_true", help="`--require-kitchen-sink` 的較直覺別名：優先找較適合煮飯的物件")
+    parser.add_argument("--min-cooking-level", type=int, choices=[1, 2, 3], help="可煮飯方便程度最低門檻：1=至少看圖確認, 2=至少可勉強煮, 3=適合煮飯")
     parser.add_argument("--strict-features", action="store_true", help="必要設施未確認時直接排除")
     parser.add_argument("--max-commute", type=int, help="最長可接受通勤分鐘數")
     parser.add_argument("--transport-mode", choices=["either", "metro", "bike"], default="either")
@@ -975,6 +991,7 @@ def main() -> None:
         destination_lon=args.destination_lon,
         max_price=args.max_price,
         min_area=args.min_area,
+        min_cooking_convenience_score=args.min_cooking_level or 0,
         districts=args.district,
         required_keywords=args.require_keyword,
         excluded_keywords=args.exclude_keyword,

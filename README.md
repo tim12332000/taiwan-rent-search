@@ -81,6 +81,9 @@ python -m src.main --county 台北市 --source 591 --source mixrent --source hou
 # 依條件分析 CSV 並輸出候選清單
 python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-cooking-friendly --top 5
 
+# 如果你只想看真正比較能正常煮飯的物件
+python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --min-cooking-level 3 --top 5
+
 # 產出給人快速瀏覽的 shortlist 報告
 # 會同時輸出 analysis.csv + shortlist.md
 python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-cooking-friendly --top 10

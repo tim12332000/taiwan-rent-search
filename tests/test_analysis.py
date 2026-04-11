@@ -268,6 +268,33 @@ def test_summarize_results_counts_platforms_and_prices():
     assert summary.platform_counts == {"591": 1, "mixrent": 1}
 
 
+def test_analyze_listings_respects_min_cooking_level(tmp_path):
+    csv_path = tmp_path / "sample.csv"
+    write_sample_csv(csv_path)
+
+    criteria = SearchCriteria(
+        min_cooking_convenience_score=2,
+    )
+    results = analyze_listings(csv_path, criteria, geocoder=None)
+
+    assert len(results) == 1
+    assert results[0].row["id"] == "591-1"
+
+
+def test_analyze_listings_with_strict_min_cooking_level_filters_review_candidates(tmp_path):
+    csv_path = tmp_path / "sample.csv"
+    write_sample_csv(csv_path)
+
+    criteria = SearchCriteria(
+        min_cooking_convenience_score=3,
+        strict_features=True,
+    )
+    results = analyze_listings(csv_path, criteria, geocoder=None)
+
+    assert len(results) == 1
+    assert results[0].row["id"] == "591-1"
+
+
 def test_score_band_maps_scores_to_bands():
     assert score_band(95) == "A"
     assert score_band(80) == "B"
@@ -351,6 +378,7 @@ def test_render_markdown_report_groups_direct_and_review_items():
     assert "待確認套房" in report
     assert "來源分布" in report
     assert "文字明確較適合煮飯" in report
+    assert "可煮飯門檻" in report
 
 
 def test_export_markdown_report_writes_file(tmp_path):
@@ -514,3 +542,14 @@ def test_parse_args_supports_require_cooking_friendly_alias(monkeypatch):
     args = __import__("src.analysis", fromlist=["parse_args"]).parse_args()
 
     assert args.require_cooking_friendly is True
+
+
+def test_parse_args_supports_min_cooking_level(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["src.analysis", "--min-cooking-level", "3"],
+    )
+
+    args = __import__("src.analysis", fromlist=["parse_args"]).parse_args()
+
+    assert args.min_cooking_level == 3
