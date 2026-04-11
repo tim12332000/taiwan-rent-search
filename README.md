@@ -1,153 +1,221 @@
-# Taiwan Rent Search Web Scraper (台灣租屋爬蟲)
+# Taiwan Rent Search Web Scraper (台灣租屋搜尋工作台)
 
-目前專注於台灣租屋爬蟲的基礎框架，已完成 591 房屋的核心 scraper、資料模型與基礎測試；其他平台、資料存儲與展示仍在後續規劃中。
+這個專案目前的主軸已經不是單純「爬資料」，而是把租屋搜尋做成本機工作台：
 
-## 項目結構
+- 自動抓多來源資料
+- 依目的地做第二輪加抓
+- 在本地頁面直接篩選、看圖、標記
+- 用「可煮飯方便程度」而不是單純關鍵字來整理候選
+- 對指定案例地址做 AI 看圖快取與 token 用量記錄
 
+## 現在最推薦的用法
+
+### 1. 一般使用
+
+```powershell
+.\open_search_app.ps1
 ```
+
+用途：
+- 啟動本機搜尋工作台
+- 自動重用或更新本機站
+- 打開穩定入口頁
+
+### 2. 臨時指定目的地
+
+```powershell
+.\search_by_destination.ps1
+```
+
+用途：
+- 先問你目的地
+- 自動啟動本機站
+- 刷新較相關的資料池
+- 直接打開搜尋頁
+
+### 3. 松仁路 100 號專用案例
+
+```powershell
+.\search_songren_100.ps1
+```
+
+用途：
+- 固定使用 `台北市信義區松仁路100號`
+- 自動更新案例資料
+- 自動跑案例專用 AI 看圖快取
+- 產出案例專用搜尋頁與資料檔
+
+## 案例工作區
+
+目前已經有一個固定案例工作區：
+
+- [songren_100 case.json](/c:/Git/taiwan-rent-search/data/cases/songren_100/case.json)
+
+案例資料夾位置：
+
+- [data/cases/songren_100](/c:/Git/taiwan-rent-search/data/cases/songren_100)
+
+執行後會在本機留下這些檔案：
+
+- `current_dataset.csv`
+- `dataset_YYYYMMDD_HHMMSS.csv`
+- `search_app.html`
+- `latest_run.json`
+- `ai_cooking_reviews.json`
+- `ai_usage.jsonl`
+- `images/`
+
+這些案例產物都只留在本機，不進 git。
+
+## 目前能力
+
+### 資料來源
+
+- `591`
+- `MixRent`
+- `Housefun`
+- `DDRoom`
+
+### 本地工作台
+
+- 穩定入口頁：`data/search_app.html`
+- 本機網站控制台：`python -m src.local_site`
+- 頁內圖片 gallery，不用一直跳回原站
+- 本地標記：`不錯 / 先略過 / 清除標記`
+- 一鍵 preset：
+  - `先看最能煮飯`
+  - `看圖審核`
+  - `全部重設`
+
+### 可煮飯方便程度模型
+
+目前已經不是單純看 `流理臺` 字樣，而是輸出分級：
+
+- `適合煮飯`
+- `可勉強煮`
+- `看圖確認`
+- `未提及`
+
+系統會同時顯示：
+
+- 等級
+- 判斷理由
+- AI 信心（如果有跑圖像判斷）
+
+### AI 看圖
+
+目前已接到松仁路 100 號案例流程：
+
+- 使用 `codex exec` 看圖
+- 對候選房源圖片做結構化判斷
+- 寫回案例快取
+- 記錄 token 用量
+
+## 常用命令
+
+### 抓資料
+
+```powershell
+python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3
+```
+
+```powershell
+python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3 --enrich-591-details --detail-limit 5
+```
+
+### 分析
+
+```powershell
+python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-cooking-friendly --top 5
+```
+
+```powershell
+python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --min-cooking-level 3 --top 5
+```
+
+### 建搜尋頁
+
+```powershell
+python -m src.webapp
+```
+
+### 松仁路 100 號案例
+
+```powershell
+python -m src.songren_100_case --open
+```
+
+限制 AI 看圖筆數／圖片數：
+
+```powershell
+python -m src.songren_100_case --ai-review-max-listings 3 --ai-review-max-images 2 --open
+```
+
+## 專案結構
+
+```text
 taiwan-rent-search/
 ├── src/
-│   ├── __init__.py
-│   ├── analysis.py        # 條件分析、通勤估算、候選排序
-│   ├── main.py            # 執行抓取並匯出 CSV
-│   ├── models.py          # 數據模型
-│   ├── webapp.py          # 產生本地即時搜尋網站
-│   └── scrapers/          # 各平台爬蟲
-│       ├── __init__.py
-│       ├── base.py        # 基礎爬蟲類
-│       ├── fang591.py     # 591房屋爬蟲
-│       ├── mixrent.py     # MixRent 聚合搜尋爬蟲
-│       ├── housefun.py    # 好房網搜尋結果爬蟲
-│       └── ddroom.py      # 租租通 API 爬蟲
+│   ├── analysis.py
+│   ├── ai_cooking_review.py
+│   ├── case_workspace.py
+│   ├── local_site.py
+│   ├── local_site_state.py
+│   ├── main.py
+│   ├── models.py
+│   ├── smart_search.py
+│   ├── songren_100_case.py
+│   ├── taipei_metro.py
+│   ├── webapp.py
+│   └── scrapers/
 ├── tests/
-│   ├── __init__.py
-│   └── test_scrapers.py   # 爬蟲測試
 ├── docs/
-│   └── research.md        # 平台研究文檔
-├── data/                  # 預留給匯出資料
-├── PROGRESS.md            # 進度追蹤
-└── requirements.txt
+├── data/
+│   └── cases/
+├── open_search_app.*
+├── search_by_destination.*
+├── search_songren_100.*
+├── README.md
+└── PROGRESS.md
 ```
 
-## 安裝
+## 驗證狀態
 
-```bash
-pip install -r requirements.txt
-```
+目前最新驗證基線：
 
-## 最簡單用法
+- `pytest tests -q`
+- `119 passed`
 
-```bash
-# Windows：直接打開本機搜尋站
-.\open_search_app.ps1
+## 現況總結
 
-# Windows：輸入目的地，會自動啟動本機搜尋站並刷新較相關的資料
-.\search_by_destination.ps1
+已完成：
 
-# 松仁路 100 號專用案例工作區
-.\search_songren_100.ps1
-```
+- 多來源抓取
+- 來源級平行化
+- 591 詳頁補強
+- 本機工作台
+- 目的地導向刷新
+- 搜尋速度量測與分數
+- 可煮飯方便程度分級
+- 圖片 gallery
+- 本地標記記憶
+- 松仁路 100 號專用案例工作區
+- AI 看圖快取與 token 用量記錄
 
-現在優先推薦把這個專案當成「本機租屋控制台」來用，不需要先手動產生 `search_app.html`。
-只要資料夾裡已經有最新的 CSV，打開本機網站時會自動把它轉成固定入口頁；如果還沒有，你也可以直接在控制台裡輸入目的地並按「更新資料」。
+還沒完成：
 
-## 使用
+- 通用地址案例模板化（不只松仁路 100 號）
+- 更完整的 AI 看圖批次策略與優先級
+- 更多平台
+- 排程
+- 長期資料品質報表
 
-```bash
-# 安裝依賴
-pip install -r requirements.txt
+## 你現在最該記住的事
 
-# 執行目前的 scraper 測試
-pytest tests/test_scrapers.py -v
+如果只是要用：
 
-# 執行含覆蓋率的驗證
-pytest tests/test_scrapers.py -v --cov=src
+- 平常打開：`open_search_app`
+- 臨時輸入地址：`search_by_destination`
+- 松仁路 100 號反覆使用：`search_songren_100`
 
-# 抓取台北市 591 列表並輸出 CSV
-python -m src.main --county 台北市
-
-# 抓取多來源並整合輸出 CSV
-python -m src.main --county 台北市 --source 591 --source mixrent
-
-# 抓取三來源並整合輸出 CSV
-python -m src.main --county 台北市 --source 591 --source mixrent --source housefun
-
-# 抓取四來源並整合輸出 CSV
-python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom
-
-# 擴量抓取（對支援分頁的來源抓多頁）
-python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3
-
-# 補抓 591 詳頁資訊（最短租期、房屋守則、管理費、設備等）
-python -m src.main --county 台北市 --source 591 --source mixrent --source housefun --source ddroom --max-pages 3 --enrich-591-details --detail-limit 5
-
-# 依條件分析 CSV 並輸出候選清單
-python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --require-cooking-friendly --top 5
-
-# 如果你只想看真正比較能正常煮飯的物件
-python -m src.analysis --destination-address "台北市信義區松仁路100號" --max-commute 30 --transport-mode either --min-cooking-level 3 --top 5
-
-# 產出給人快速瀏覽的 shortlist 報告
-# 會同時輸出 analysis.csv + shortlist.md
-python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-cooking-friendly --top 10
-
-# 產出圖文穿插的 HTML 報告
-# 會同時輸出 analysis.csv + shortlist.md + shortlist.html
-python -m src.analysis --destination-address "台北市信義區松仁路100號 29樓" --transport-mode either --require-cooking-friendly --top 10
-
-# 產出本地即時搜尋網站
-python -m src.webapp --input data\\591-ddroom-housefun-mixrent_taipei_20260406_233623.csv
-
-# 啟動本機網站（建議）
-python -m src.local_site
-
-# 先輸入目的地，再更新較相關的資料池並打開搜尋頁
-python -m src.smart_search --destination-address "台北市信義區松仁路100號" --open
-
-# 松仁路 100 號專用案例工作區（輸出固定存到 data/cases/songren_100/）
-python -m src.songren_100_case --open
-
-# Windows 一鍵開啟本機網站
-.\open_search_app.ps1
-
-# Windows 目的地導向更新
-.\search_by_destination.ps1
-
-# Windows 松仁路 100 號專用案例
-.\search_songren_100.ps1
-```
-
-松仁路 100 號案例工作區現在也會把 AI 看圖結果與 token 用量記錄到專用資料夾中，方便之後重複使用與複查，但這些執行產物只保留在本機，不會進 git。
-
-固定入口檔案是 `data/search_app.html`。現在更推薦直接啟動本機網站，因為可以在網頁裡按「更新資料」而不是回到命令列。
-`open_search_app` 會優先重用既有的本機搜尋站；如果預設的 `8765` 埠已被別的程式佔用，會改用其他可用埠，而不會先把對方殺掉。
-如果本機搜尋站正在執行，`search_by_destination` / `python -m src.smart_search --open` 也會自動重用那個站點並直接打開對應搜尋頁。
-如果本機搜尋站還沒啟動，`search_by_destination.ps1` / `.bat` 也會先幫你把它啟起來，再做目的地更新。
-`python -m src.main ...` 在匯出後也會直接印出資料品質摘要，例如來源分布、圖片覆蓋率、樓層資訊覆蓋率與詳頁補強覆蓋率，方便快速判斷這份資料池是否值得繼續分析。
-
-## 進度
-
-- [x] 平台研究
-- [x] 591房屋爬蟲框架
-- [x] MixRent 聚合爬蟲
-- [x] 好房網搜尋爬蟲
-- [x] 租租通 API 爬蟲
-- [x] 資料模型
-- [x] 測試基礎建設與離線解析驗證
-- [x] 第一份 591 CSV 匯出
-- [x] 可重複使用的條件分析核心
-- [x] 人看得懂的 shortlist 報告
-- [x] 圖文卡片式 HTML 報告
-- [x] 多來源整合輸出
-- [x] 三來源資料池
-- [x] 四來源資料池
-- [x] 現有來源開始擴量
-- [x] 四來源多頁資料池
-- [x] 本地即時搜尋網站
-- [x] 591 詳頁補強
-- [ ] 圖片下載 & AI審核
-- [ ] 永慶/信義平台
-- [x] 數據存儲 (CSV)
-- [ ] 排程系統
-- [ ] 後端 API
-- [ ] 前端網站
+你不需要再自己分辨哪個 `*_search_app.html` 才是新的，這件事應該由工具處理。
