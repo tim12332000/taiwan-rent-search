@@ -1,0 +1,8 @@
+{
+  "slug": "songren_100",
+  "destination_address": "台北市信義區松仁路100號",
+  "county": "台北市",
+  "district": "信義區",
+  "current_dataset": "current_dataset.csv",
+  "search_app": "search_app.html"
+}

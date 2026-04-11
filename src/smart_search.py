@@ -36,6 +36,7 @@ def refresh_search_for_destination(
     county: str | None = None,
     sources: list[str] | None = None,
     output_path: str | Path | None = None,
+    search_output_path: str | Path | None = None,
     delay: float = 1.5,
     base_max_pages: int = 3,
     focus_max_pages: int = 5,
@@ -61,7 +62,8 @@ def refresh_search_for_destination(
     )
     if progress_callback:
         progress_callback("正在產生搜尋頁...", None, None, len(records))
-    search_path = export_search_app(dataset_path, build_default_search_app_path())
+    target_search_path = Path(search_output_path) if search_output_path else build_default_search_app_path()
+    search_path = export_search_app(dataset_path, target_search_path)
     if progress_callback:
         progress_callback("搜尋頁已更新", None, None, len(records))
     return dataset_path, search_path, len(records), resolved_county, district

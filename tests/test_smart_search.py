@@ -40,6 +40,7 @@ def test_refresh_search_for_destination_runs_focus_pipeline(monkeypatch, tmp_pat
         destination_address="台北市信義區松仁路100號",
         base_max_pages=2,
         focus_max_pages=4,
+        search_output_path=stable,
     )
 
     assert dataset_path == dataset

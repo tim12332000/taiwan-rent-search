@@ -43,6 +43,9 @@ pip install -r requirements.txt
 
 # Windows：輸入目的地，會自動啟動本機搜尋站並刷新較相關的資料
 .\search_by_destination.ps1
+
+# 松仁路 100 號專用案例工作區
+.\search_songren_100.ps1
 ```
 
 現在優先推薦把這個專案當成「本機租屋控制台」來用，不需要先手動產生 `search_app.html`。
@@ -101,11 +104,17 @@ python -m src.local_site
 # 先輸入目的地，再更新較相關的資料池並打開搜尋頁
 python -m src.smart_search --destination-address "台北市信義區松仁路100號" --open
 
+# 松仁路 100 號專用案例工作區（輸出固定存到 data/cases/songren_100/）
+python -m src.songren_100_case --open
+
 # Windows 一鍵開啟本機網站
 .\open_search_app.ps1
 
 # Windows 目的地導向更新
 .\search_by_destination.ps1
+
+# Windows 松仁路 100 號專用案例
+.\search_songren_100.ps1
 ```
 
 固定入口檔案是 `data/search_app.html`。現在更推薦直接啟動本機網站，因為可以在網頁裡按「更新資料」而不是回到命令列。
