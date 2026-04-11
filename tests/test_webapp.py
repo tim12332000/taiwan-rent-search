@@ -181,6 +181,11 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "cooking_convenience_reason" in html_text
     assert "可煮飯：" in html_text
     assert "可煮飯判斷：" in html_text
+    assert "gallery-modal" in html_text
+    assert "openGallery" in html_text
+    assert "moveGallery" in html_text
+    assert "data-gallery-id" in html_text
+    assert "看圖 ${item.images.length} 張" in html_text
     assert "搜尋速度" in html_text
     assert "performance.now()" in html_text
     assert "calculateSearchSpeedScore" in html_text

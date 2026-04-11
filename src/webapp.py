@@ -298,6 +298,13 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       border-radius: 18px;
       background: #e4d8c7;
     }}
+    .listing button.image-button {{
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: zoom-in;
+    }}
     .listing .placeholder {{
       display: grid;
       place-items: center;
@@ -360,6 +367,87 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       color: var(--accent-2);
       font-weight: 700;
       text-decoration: none;
+    }}
+    .gallery-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }}
+    .gallery-actions button {{
+      border: 1px solid var(--line);
+      background: #fff7ed;
+      color: var(--accent-2);
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+    }}
+    .gallery-modal {{
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(17, 24, 39, 0.82);
+      z-index: 20;
+    }}
+    .gallery-modal.is-open {{
+      display: flex;
+    }}
+    .gallery-dialog {{
+      width: min(100%, 960px);
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+      border-radius: 24px;
+      background: rgba(255, 250, 243, 0.98);
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
+    }}
+    .gallery-toolbar {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+    }}
+    .gallery-toolbar button {{
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      font: inherit;
+    }}
+    .gallery-stage {{
+      position: relative;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+    }}
+    .gallery-stage img {{
+      width: 100%;
+      max-height: 72vh;
+      object-fit: contain;
+      border-radius: 18px;
+      background: #e4d8c7;
+    }}
+    .gallery-stage button {{
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,.92);
+      cursor: pointer;
+      font-size: 20px;
+    }}
+    .gallery-caption {{
+      color: var(--muted);
+      line-height: 1.6;
     }}
     .empty {{
       padding: 28px;
@@ -461,6 +549,23 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       </section>
     </div>
   </main>
+  <div id="gallery-modal" class="gallery-modal" aria-hidden="true">
+    <div class="gallery-dialog" role="dialog" aria-modal="true" aria-label="房源圖片檢視">
+      <div class="gallery-toolbar">
+        <div>
+          <strong id="gallery-title">圖片檢視</strong>
+          <div id="gallery-count"></div>
+        </div>
+        <button id="gallery-close" type="button">關閉</button>
+      </div>
+      <div class="gallery-stage">
+        <button id="gallery-prev" type="button" aria-label="上一張">‹</button>
+        <img id="gallery-image" alt="房源圖片" />
+        <button id="gallery-next" type="button" aria-label="下一張">›</button>
+      </div>
+      <div id="gallery-caption" class="gallery-caption"></div>
+    </div>
+  </div>
 
   <script>
     const listings = {listings_json};
@@ -484,10 +589,19 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       avgPrice: document.getElementById('avg-price'),
       searchSpeed: document.getElementById('search-speed'),
       speedHint: document.getElementById('speed-hint'),
+      galleryModal: document.getElementById('gallery-modal'),
+      galleryTitle: document.getElementById('gallery-title'),
+      galleryCount: document.getElementById('gallery-count'),
+      galleryImage: document.getElementById('gallery-image'),
+      galleryCaption: document.getElementById('gallery-caption'),
+      galleryPrev: document.getElementById('gallery-prev'),
+      galleryNext: document.getElementById('gallery-next'),
+      galleryClose: document.getElementById('gallery-close'),
     }};
     const SEARCH_SPEED_BUDGET_MS = {SEARCH_SPEED_BUDGET_MS};
     const SEARCH_SPEED_WARNING_MS = {SEARCH_SPEED_WARNING_MS};
     let filterFrame = null;
+    let galleryState = null;
 
     const uniqueValues = (key) => [...new Set(listings.map(item => item[key]).filter(Boolean))].sort();
     const districts = uniqueValues('district');
@@ -653,7 +767,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
 
     function card(item) {{
       const image = item.cover
-        ? `<img src="${{item.cover}}" alt="${{item.title}}" loading="lazy">`
+        ? `<button class="image-button" type="button" data-gallery-id="${{item.id}}"><img src="${{item.cover}}" alt="${{item.title}}" loading="lazy"></button>`
         : `<div class="placeholder">無圖片</div>`;
       const kitchen = item.cooking_convenience_label || '未提及';
       const floorArea = item.floor_area ? `${{item.floor_area}}坪` : '坪數待補';
@@ -671,6 +785,9 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         item.detail_deposit ? `押金：${{item.detail_deposit}}` : '',
         item.detail_management_fee ? `管理費：${{item.detail_management_fee}}` : '',
       ].filter(Boolean).join(' · ');
+      const galleryButton = item.images && item.images.length
+        ? `<button type="button" data-gallery-id="${{item.id}}">看圖 ${{item.images.length}} 張</button>`
+        : '';
       const rules = item.detail_rules ? `<div class="rule">守則：${{item.detail_rules}}</div>` : '';
       const facilities = item.detail_facilities ? `<div class="facility">設備：${{item.detail_facilities}}</div>` : '';
       return `
@@ -691,10 +808,47 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
             <div class="desc">${{item.description || '目前沒有額外描述。'}}</div>
             ${{rules}}
             ${{facilities}}
+            <div class="gallery-actions">${{galleryButton}}</div>
             <div class="actions"><a href="${{item.url}}" target="_blank" rel="noreferrer">查看原始房源</a></div>
           </div>
         </article>
       `;
+    }}
+
+    function openGallery(listingId, startIndex = 0) {{
+      const item = listings.find(candidate => candidate.id === listingId);
+      if (!item || !item.images || !item.images.length) return;
+      galleryState = {{ item, index: Math.max(0, Math.min(startIndex, item.images.length - 1)) }};
+      renderGallery();
+      els.galleryModal.classList.add('is-open');
+      els.galleryModal.setAttribute('aria-hidden', 'false');
+    }}
+
+    function closeGallery() {{
+      galleryState = null;
+      els.galleryModal.classList.remove('is-open');
+      els.galleryModal.setAttribute('aria-hidden', 'true');
+      els.galleryImage.removeAttribute('src');
+    }}
+
+    function renderGallery() {{
+      if (!galleryState) return;
+      const {{ item, index }} = galleryState;
+      els.galleryTitle.textContent = item.title || '圖片檢視';
+      els.galleryCount.textContent = `${{index + 1}} / ${{item.images.length}}`;
+      els.galleryImage.src = item.images[index];
+      els.galleryCaption.textContent = item.cooking_convenience_reason
+        ? `可煮飯判斷：${{item.cooking_convenience_reason}}`
+        : '可煮飯判斷：待補';
+      els.galleryPrev.disabled = item.images.length <= 1;
+      els.galleryNext.disabled = item.images.length <= 1;
+    }}
+
+    function moveGallery(delta) {{
+      if (!galleryState) return;
+      const imageCount = galleryState.item.images.length;
+      galleryState.index = (galleryState.index + delta + imageCount) % imageCount;
+      renderGallery();
     }}
 
     function calculateSearchSpeedScore(durationMs) {{
@@ -787,6 +941,23 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     if (initialDestination) els.destination.value = initialDestination;
     [els.q, els.destination, els.district, els.platform, els.maxPrice, els.minArea, els.cookingLevel, els.hasImages, els.sortBy]
       .forEach(el => el.addEventListener('input', scheduleApplyFilters));
+    els.results.addEventListener('click', (event) => {{
+      const trigger = event.target.closest('[data-gallery-id]');
+      if (!trigger) return;
+      openGallery(trigger.getAttribute('data-gallery-id'));
+    }});
+    els.galleryPrev.addEventListener('click', () => moveGallery(-1));
+    els.galleryNext.addEventListener('click', () => moveGallery(1));
+    els.galleryClose.addEventListener('click', closeGallery);
+    els.galleryModal.addEventListener('click', (event) => {{
+      if (event.target === els.galleryModal) closeGallery();
+    }});
+    document.addEventListener('keydown', (event) => {{
+      if (!galleryState) return;
+      if (event.key === 'Escape') closeGallery();
+      if (event.key === 'ArrowLeft') moveGallery(-1);
+      if (event.key === 'ArrowRight') moveGallery(1);
+    }});
     applyFilters();
   </script>
 </body>
