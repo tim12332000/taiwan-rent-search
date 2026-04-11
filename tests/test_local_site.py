@@ -11,6 +11,7 @@ from src.local_site import (
 from src.local_site_state import (
     LOCAL_SITE_STATE_PATH,
     clear_local_site_state,
+    get_local_site_version,
     read_local_site_state,
     write_local_site_state,
 )
@@ -99,13 +100,16 @@ def test_local_site_state_round_trip(monkeypatch, tmp_path):
     state_path = tmp_path / "local_site.json"
     monkeypatch.setattr("src.local_site_state.LOCAL_SITE_STATE_PATH", state_path)
 
-    write_local_site_state("127.0.0.1", 9876)
+    monkeypatch.setattr("src.local_site_state.get_local_site_version", lambda: "abc123")
+    write_local_site_state("127.0.0.1", 9876, pid=4321)
 
     payload = read_local_site_state()
     assert payload == {
         "host": "127.0.0.1",
         "port": 9876,
         "base_url": "http://127.0.0.1:9876",
+        "pid": 4321,
+        "version": "abc123",
     }
 
     clear_local_site_state("127.0.0.1", 9876)
@@ -142,3 +146,10 @@ def test_ensure_default_search_app_returns_existing_stable_when_no_dataset(monke
     assert app_path == str(stable)
     assert source_name == ""
     assert generated is False
+
+
+def test_get_local_site_version_is_stable_shape():
+    version = get_local_site_version()
+
+    assert isinstance(version, str)
+    assert len(version) == 12

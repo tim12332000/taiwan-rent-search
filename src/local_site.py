@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from .analysis import NominatimGeocoder, extract_district_from_text
-from .local_site_state import clear_local_site_state, write_local_site_state
+from .local_site_state import clear_local_site_state, get_local_site_version, write_local_site_state
 from .smart_search import refresh_search_for_destination
 from .webapp import build_default_search_app_path, export_search_app, latest_dataset_path
 
@@ -550,7 +550,7 @@ class LocalSiteHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/status":
-            self._send_json({"ok": True})
+            self._send_json({"ok": True, "version": get_local_site_version()})
             return
 
         if parsed.path == "/api/resolve-destination":

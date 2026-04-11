@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 
 LOCAL_SITE_STATE_PATH = Path(".omx") / "state" / "local_site.json"
+VERSION_PATHS = (
+    Path(__file__).with_name("local_site.py"),
+    Path(__file__).with_name("webapp.py"),
+    Path(__file__).with_name("analysis.py"),
+)
 
 
 def build_local_site_url(host: str, port: int, path: str = "") -> str:
@@ -18,12 +25,24 @@ def build_local_site_url(host: str, port: int, path: str = "") -> str:
     return f"http://{host}:{port}{normalized_path}"
 
 
-def write_local_site_state(host: str, port: int) -> Path:
+def get_local_site_version() -> str:
+    digest = hashlib.sha1()
+    for path in VERSION_PATHS:
+        stat = path.stat()
+        digest.update(str(path.name).encode("utf-8"))
+        digest.update(str(stat.st_mtime_ns).encode("utf-8"))
+        digest.update(str(stat.st_size).encode("utf-8"))
+    return digest.hexdigest()[:12]
+
+
+def write_local_site_state(host: str, port: int, pid: int | None = None) -> Path:
     LOCAL_SITE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "host": host,
         "port": port,
         "base_url": build_local_site_url(host, port),
+        "pid": pid if pid is not None else os.getpid(),
+        "version": get_local_site_version(),
     }
     LOCAL_SITE_STATE_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return LOCAL_SITE_STATE_PATH

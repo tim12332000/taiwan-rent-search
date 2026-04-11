@@ -7,17 +7,46 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
 
-function Test-LocalSite {
+function Get-ExpectedLocalSiteVersion {
+    $version = & python -c "from src.local_site_state import get_local_site_version; print(get_local_site_version())"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to determine expected local site version."
+    }
+    return ($version | Select-Object -Last 1).Trim()
+}
+
+function Get-LocalSiteStatus {
     param(
         [int]$Port
     )
 
     try {
         $statusUrl = "http://127.0.0.1:{0}/api/status" -f $Port
-        $response = Invoke-RestMethod -Uri $statusUrl -TimeoutSec 2
-        return $response.ok -eq $true
+        return Invoke-RestMethod -Uri $statusUrl -TimeoutSec 2
     } catch {
-        return $false
+        return $null
+    }
+}
+
+function Read-LocalSiteState {
+    $statePath = Join-Path $repoRoot ".omx\state\local_site.json"
+    if (-not (Test-Path $statePath)) {
+        return $null
+    }
+    try {
+        return Get-Content $statePath -Raw -Encoding utf8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+function Stop-TrackedLocalSite {
+    $state = Read-LocalSiteState
+    if (-not $state) {
+        return
+    }
+    if ($state.pid) {
+        Stop-Process -Id $state.pid -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -45,7 +74,20 @@ function Get-AvailablePort {
 }
 
 $port = 8765
-if (-not (Test-LocalSite -Port $port)) {
+$expectedVersion = Get-ExpectedLocalSiteVersion
+$status = Get-LocalSiteStatus -Port $port
+$restartRequired = $false
+
+if ($status -and $status.ok -eq $true) {
+    if ($status.version -ne $expectedVersion) {
+        Stop-TrackedLocalSite
+        Start-Sleep -Milliseconds 300
+        $status = $null
+        $restartRequired = $true
+    }
+}
+
+if (-not $status -or $status.ok -ne $true) {
     if (-not (Test-PortAvailable -Port $port)) {
         $port = Get-AvailablePort
     }
@@ -55,12 +97,13 @@ if (-not (Test-LocalSite -Port $port)) {
     $deadline = (Get-Date).AddSeconds(6)
     do {
         Start-Sleep -Milliseconds 400
-        if (Test-LocalSite -Port $port) {
+        $status = Get-LocalSiteStatus -Port $port
+        if ($status -and $status.ok -eq $true) {
             break
         }
     } while ((Get-Date) -lt $deadline)
 
-    if (-not (Test-LocalSite -Port $port)) {
+    if (-not $status -or $status.ok -ne $true) {
         throw "Local search site did not start in time."
     }
 }
