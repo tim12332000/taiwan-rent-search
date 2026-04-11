@@ -115,6 +115,30 @@ def test_has_kitchen_sink_signal_does_not_treat_cooking_allowed_as_sink():
     assert has_kitchen_sink_signal(row) is False
 
 
+def test_has_kitchen_sink_signal_does_not_treat_bathroom_sink_as_kitchen_sink():
+    row = {
+        "title": "衛浴設備齊全",
+        "description": "浴室有洗手槽，乾濕分離",
+        "location_district": "信義區",
+        "location_area": "松仁路",
+        "room_type": "套房",
+    }
+
+    assert has_kitchen_sink_signal(row) is False
+
+
+def test_has_kitchen_sink_signal_accepts_kitchen_sink_context():
+    row = {
+        "title": "廚房設備完整",
+        "description": "廚房有水槽與電磁爐，可正常備餐",
+        "location_district": "信義區",
+        "location_area": "松仁路",
+        "room_type": "套房",
+    }
+
+    assert has_kitchen_sink_signal(row) is True
+
+
 def test_analyze_listings_filters_and_scores_with_geocoder(tmp_path):
     csv_path = tmp_path / "sample.csv"
     write_sample_csv(csv_path)

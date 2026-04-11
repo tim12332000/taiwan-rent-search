@@ -169,6 +169,7 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "只看文字明確提到流理臺" in html_text
     assert "文字提及流理臺" in html_text
     assert "看圖確認" in html_text
+    assert "只看有圖片（方便手動看廚房）" in html_text
     assert "搜尋速度" in html_text
     assert "performance.now()" in html_text
     assert "calculateSearchSpeedScore" in html_text

@@ -43,12 +43,36 @@ COUNTY_ALIASES = {
     "高雄市": "高雄市",
 }
 
-KITCHEN_SINK_KEYWORDS = (
+KITCHEN_SINK_EXPLICIT_KEYWORDS = (
     "流理台",
     "流理臺",
-    "電磁爐",
+)
+KITCHEN_SINK_AMBIGUOUS_KEYWORDS = (
     "洗手槽",
     "水槽",
+)
+KITCHEN_CONTEXT_KEYWORDS = (
+    "廚房",
+    "廚具",
+    "料理",
+    "煮飯",
+    "備餐",
+    "瓦斯爐",
+    "電磁爐",
+    "流理台",
+    "流理臺",
+)
+BATHROOM_CONTEXT_KEYWORDS = (
+    "浴室",
+    "衛浴",
+    "廁所",
+    "衛生間",
+    "馬桶",
+    "浴缸",
+    "乾濕分離",
+    "洗面台",
+    "洗手台",
+    "面盆",
 )
 
 ANALYSIS_FIELDNAMES = [
@@ -234,7 +258,16 @@ def parse_images(value: str | None) -> list[str]:
 
 def has_kitchen_sink_signal(row: dict[str, str]) -> bool:
     text = listing_text(row)
-    return any(keyword.lower() in text for keyword in KITCHEN_SINK_KEYWORDS)
+    has_explicit_sink = any(keyword.lower() in text for keyword in KITCHEN_SINK_EXPLICIT_KEYWORDS)
+    has_ambiguous_sink = any(keyword.lower() in text for keyword in KITCHEN_SINK_AMBIGUOUS_KEYWORDS)
+    has_kitchen_context = any(keyword.lower() in text for keyword in KITCHEN_CONTEXT_KEYWORDS)
+    has_bathroom_context = any(keyword.lower() in text for keyword in BATHROOM_CONTEXT_KEYWORDS)
+
+    if has_explicit_sink:
+        return True
+    if has_ambiguous_sink and has_kitchen_context and not has_bathroom_context:
+        return True
+    return False
 
 
 def build_listing_address(row: dict[str, str]) -> str:

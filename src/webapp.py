@@ -423,7 +423,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         </label>
         <label class="check">
           <input id="has-images" type="checkbox" />
-          只看有圖片
+          只看有圖片（方便手動看廚房）
         </label>
         <div class="field">
           <label for="sort-by">排序</label>
