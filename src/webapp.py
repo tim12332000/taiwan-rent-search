@@ -421,10 +421,15 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
           <label for="min-area">最低坪數</label>
           <input id="min-area" type="number" min="0" step="1" placeholder="例如 10" />
         </div>
-        <label class="check">
-          <input id="kitchen-only" type="checkbox" />
-          只看較適合煮飯
-        </label>
+        <div class="field">
+          <label for="cooking-level">可煮飯方便程度</label>
+          <select id="cooking-level">
+            <option value="">全部</option>
+            <option value="3">適合煮飯</option>
+            <option value="2">至少可勉強煮</option>
+            <option value="1">至少看圖確認</option>
+          </select>
+        </div>
         <label class="check">
           <input id="has-images" type="checkbox" />
           只看有圖片（方便手動看廚房）
@@ -467,7 +472,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       platform: document.getElementById('platform'),
       maxPrice: document.getElementById('max-price'),
       minArea: document.getElementById('min-area'),
-      kitchenOnly: document.getElementById('kitchen-only'),
+      cookingLevel: document.getElementById('cooking-level'),
       hasImages: document.getElementById('has-images'),
       sortBy: document.getElementById('sort-by'),
       results: document.getElementById('results'),
@@ -715,7 +720,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const platform = els.platform.value;
       const maxPrice = Number(els.maxPrice.value || 0);
       const minArea = Number(els.minArea.value || 0);
-      const kitchenOnly = els.kitchenOnly.checked;
+      const cookingLevel = Number(els.cookingLevel.value || 0);
       const hasImages = els.hasImages.checked;
       const sortBy = els.sortBy.value;
 
@@ -725,7 +730,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         if (platform && item.platform !== platform) return false;
         if (maxPrice && item.price > maxPrice) return false;
         if (minArea && (!item.floor_area || item.floor_area < minArea)) return false;
-        if (kitchenOnly && item.cooking_convenience_score < 2) return false;
+        if (cookingLevel && item.cooking_convenience_score < cookingLevel) return false;
         if (hasImages && !item.cover) return false;
         return true;
       }});
@@ -775,7 +780,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     const initialDestination = pageParams.get('destination');
     if (initialQuery) els.q.value = initialQuery;
     if (initialDestination) els.destination.value = initialDestination;
-    [els.q, els.destination, els.district, els.platform, els.maxPrice, els.minArea, els.kitchenOnly, els.hasImages, els.sortBy]
+    [els.q, els.destination, els.district, els.platform, els.maxPrice, els.minArea, els.cookingLevel, els.hasImages, els.sortBy]
       .forEach(el => el.addEventListener('input', scheduleApplyFilters));
     applyFilters();
   </script>

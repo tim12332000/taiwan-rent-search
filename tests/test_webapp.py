@@ -169,7 +169,10 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "inferDistrictFromListings" in html_text
     assert "latParam === null ? NaN : Number(latParam)" in html_text
     assert "const [districtLat, districtLon] = districtCenters[district]" in html_text
-    assert "只看較適合煮飯" in html_text
+    assert 'id="cooking-level"' in html_text
+    assert "適合煮飯" in html_text
+    assert "至少可勉強煮" in html_text
+    assert "至少看圖確認" in html_text
     assert "較適合煮飯" in html_text
     assert "只看有圖片（方便手動看廚房）" in html_text
     assert "可煮飯方便程度優先" in html_text
