@@ -464,6 +464,32 @@ class TestFang591Scraper:
         assert detail["bathrooms"] == 2
         assert detail["floor"] == "3F/12F"
 
+    def test_parse_detail_html_falls_back_to_contact_tools_phone(self):
+        scraper = Fang591Scraper()
+        detail = scraper.parse_detail_html(
+            """
+            <section class="block house-condition">
+              <div class="house-condition-header">
+                <section class="contact">
+                  <div class="contact-info">
+                    <p><span class="name">代理人: 何女士</span></p>
+                  </div>
+                </section>
+                <div class="contact-tools">
+                  <div class="contact-action-lg">
+                    <div class="concat-btn" data-gtm-behavior="call"><em>打電話</em></div>
+                    <span><button><span>0978-073-116</span></button></span>
+                  </div>
+                </div>
+              </div>
+              <div class="house-condition-content">可申請租屋補助</div>
+            </section>
+            """
+        )
+
+        assert detail["detail_owner_name"] == "何女士"
+        assert detail["detail_contact_phone"] == "0978-073-116"
+
     def test_merge_detail_overwrites_missing_listing_fields(self):
         scraper = Fang591Scraper()
         base_listing = HousingData(

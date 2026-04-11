@@ -320,7 +320,7 @@ class Fang591Scraper(BaseScraper):
 
         if owner_note:
             owner_text = owner_note.get_text(" ", strip=True)
-            owner_match = re.search(r"屋主[:：]\s*([^\s]+)", owner_text)
+            owner_match = re.search(r"(?:屋主|代理人)[:：]\s*([^\s]+)", owner_text)
             phone_match = re.search(r"09\d{2}[- ]?\d{3}[- ]?\d{3}", owner_text)
             if owner_match:
                 result["detail_owner_name"] = owner_match.group(1)
@@ -330,6 +330,15 @@ class Fang591Scraper(BaseScraper):
                 result["description"] = f"{result['description']} {owner_text[:300]}".strip()
             else:
                 result["description"] = owner_text[:300]
+
+        if not result["detail_contact_phone"]:
+            contact_tools_match = re.search(
+                r'contact-tools.*?(09\d{2}[- ]?\d{3}[- ]?\d{3})',
+                html,
+                re.DOTALL,
+            )
+            if contact_tools_match:
+                result["detail_contact_phone"] = contact_tools_match.group(1).replace(" ", "")
 
         return result
 
