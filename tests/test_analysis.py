@@ -103,6 +103,18 @@ def test_has_kitchen_sink_signal_detects_keywords():
     assert has_kitchen_sink_signal(row) is True
 
 
+def test_has_kitchen_sink_signal_does_not_treat_cooking_allowed_as_sink():
+    row = {
+        "title": "可開伙套房",
+        "description": "可開伙，採光佳",
+        "location_district": "信義區",
+        "location_area": "松仁路",
+        "room_type": "套房",
+    }
+
+    assert has_kitchen_sink_signal(row) is False
+
+
 def test_analyze_listings_filters_and_scores_with_geocoder(tmp_path):
     csv_path = tmp_path / "sample.csv"
     write_sample_csv(csv_path)
@@ -161,7 +173,7 @@ def test_export_analysis_results_writes_expected_columns(tmp_path):
         commute_best_minutes=8,
         kitchen_sink_signal=True,
         needs_image_review=False,
-        matched_reasons=["estimated commute 8 min", "kitchen sink signal detected"],
+        matched_reasons=["estimated commute 8 min", "kitchen sink mentioned in text"],
     )
 
     output = tmp_path / "analysis.csv"
@@ -241,7 +253,7 @@ def test_format_listing_line_contains_human_readable_summary():
     assert "mixrent" in line
     assert "信義區" in line
     assert "通勤 8 分" in line
-    assert "流理臺 已確認" in line
+    assert "流理臺 文字提及" in line
 
 
 def test_render_markdown_report_groups_direct_and_review_items():
@@ -265,7 +277,7 @@ def test_render_markdown_report_groups_direct_and_review_items():
         commute_best_minutes=8,
         kitchen_sink_signal=True,
         needs_image_review=False,
-        matched_reasons=["estimated commute 8 min", "kitchen sink signal detected"],
+        matched_reasons=["estimated commute 8 min", "kitchen sink mentioned in text"],
     )
     review = AnalysisResult(
         row={
@@ -289,11 +301,12 @@ def test_render_markdown_report_groups_direct_and_review_items():
     report = render_markdown_report([direct, review], criteria, "data/sample.csv")
 
     assert "# 租屋快速瀏覽報告" in report
-    assert "## 直接看" in report
-    assert "## 待看圖確認" in report
+    assert "## 文字提及流理臺" in report
+    assert "## 看圖確認" in report
     assert "可開伙套房" in report
     assert "待確認套房" in report
     assert "來源分布" in report
+    assert "文字提及流理臺" in report
 
 
 def test_export_markdown_report_writes_file(tmp_path):
@@ -351,7 +364,7 @@ def test_render_html_report_contains_image_and_sections():
 
     assert "<!doctype html>" in report.lower()
     assert "租屋快速瀏覽報告" in report
-    assert "直接看" in report
+    assert "文字提及流理臺" in report
     assert "https://img/1.jpg" in report
     assert "可開伙套房" in report
     assert "來源分布" in report

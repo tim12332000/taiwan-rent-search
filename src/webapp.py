@@ -349,7 +349,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
   <main class="page">
     <section class="hero">
       <h1>租屋即時搜尋</h1>
-      <p>不用再翻 CSV。這個頁面把最新資料池直接嵌進來，你可以即時輸入關鍵字、切來源、行政區、租金上限、坪數下限和流理臺需求，候選會立刻更新。</p>
+      <p>不用再翻 CSV。這個頁面把最新資料池直接嵌進來，你可以即時輸入關鍵字、切來源、行政區、租金上限、坪數下限和圖片條件，候選會立刻更新。</p>
       <div class="hero-meta">
         <span>來源資料：{source_name}</span>
         <span>即時過濾：前端本地運算</span>
@@ -390,7 +390,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         </div>
         <label class="check">
           <input id="kitchen-only" type="checkbox" />
-          只看有流理臺 / 可開伙訊號
+          只看文字明確提到流理臺
         </label>
         <label class="check">
           <input id="has-images" type="checkbox" />
@@ -411,7 +411,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         <div class="summary">
           <div class="metric">目前顯示<strong id="count-visible">0</strong></div>
           <div class="metric">資料來源<strong id="count-platforms">0</strong></div>
-          <div class="metric">有流理臺訊號<strong id="count-kitchen">0</strong></div>
+          <div class="metric">文字提及流理臺<strong id="count-kitchen">0</strong></div>
           <div class="metric">平均月租<strong id="avg-price">-</strong></div>
         </div>
         <div id="results" class="results"></div>
@@ -608,7 +608,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const image = item.cover
         ? `<img src="${{item.cover}}" alt="${{item.title}}" loading="lazy">`
         : `<div class="placeholder">無圖片</div>`;
-      const kitchen = item.kitchen_sink_signal ? '有流理臺訊號' : '待確認';
+      const kitchen = item.kitchen_sink_signal ? '文字提及流理臺' : '看圖確認';
       const floorArea = item.floor_area ? `${{item.floor_area}}坪` : '坪數待補';
       const commute = item.commute
         ? `估通勤 ${{item.commute.bestMinutes}} 分鐘 · 單車 ${{item.commute.bikeMinutes}} / 捷運 ${{item.commute.metroMinutes}}`

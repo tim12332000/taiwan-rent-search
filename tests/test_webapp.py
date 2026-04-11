@@ -105,6 +105,28 @@ def test_listing_to_view_model_extracts_cover_and_search_text():
     assert "台北市信義區松仁路" in model["search_text_compact"]
 
 
+def test_listing_to_view_model_does_not_treat_cooking_allowed_as_sink_signal():
+    row = {
+        "id": "591-2",
+        "platform": "591",
+        "title": "可開伙套房",
+        "price": "18000",
+        "location_county": "台北市",
+        "location_district": "信義區",
+        "location_area": "松仁路",
+        "floor_area": "12",
+        "room_type": "套房",
+        "description": "近捷運 可開伙",
+        "url": "https://rent.591.com.tw/2",
+        "images": "",
+        "updated_at": "2026-01-01T00:00:00",
+    }
+
+    model = listing_to_view_model(row)
+
+    assert model["kitchen_sink_signal"] is False
+
+
 def test_prepare_listing_view_models_reads_csv(tmp_path):
     csv_path = tmp_path / "sample.csv"
     write_sample_csv(csv_path)
@@ -141,6 +163,9 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "inferDistrictFromListings" in html_text
     assert "latParam === null ? NaN : Number(latParam)" in html_text
     assert "const [districtLat, districtLon] = districtCenters[district]" in html_text
+    assert "只看文字明確提到流理臺" in html_text
+    assert "文字提及流理臺" in html_text
+    assert "看圖確認" in html_text
 
 
 def test_build_search_app_output_path_uses_input_stem():

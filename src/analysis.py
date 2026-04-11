@@ -46,15 +46,9 @@ COUNTY_ALIASES = {
 KITCHEN_SINK_KEYWORDS = (
     "流理台",
     "流理臺",
-    "廚房",
-    "可開伙",
-    "可炊",
-    "開伙",
-    "廚具",
-    "瓦斯爐",
     "電磁爐",
-    "ih爐",
     "洗手槽",
+    "水槽",
 )
 
 ANALYSIS_FIELDNAMES = [
@@ -398,11 +392,10 @@ def score_listing(
         reasons.append(f"area {area} ping")
 
     if kitchen_sink:
-        score += 8
-        reasons.append("kitchen sink signal detected")
+        score += 4
+        reasons.append("kitchen sink mentioned in text")
     elif criteria.require_kitchen_sink:
-        score -= 8
-        reasons.append("kitchen sink not confirmed")
+        reasons.append("kitchen sink not mentioned in text")
 
     image_count = len(parse_images(row.get("images")))
     if image_count:
@@ -496,7 +489,7 @@ def format_listing_line(result: AnalysisResult) -> str:
     price = result.row.get("price", "?")
     floor_area = result.row.get("floor_area", "") or "?"
     commute = result.commute_best_minutes if result.commute_best_minutes is not None else "n/a"
-    kitchen = "已確認" if result.kitchen_sink_signal else "待確認" if result.needs_image_review else "無訊號"
+    kitchen = "文字提及" if result.kitchen_sink_signal else "看圖確認" if result.needs_image_review else "未提及"
     band = score_band(result.score)
     return (
         f"**{band}級** | {platform} | {district} | {area} | ${price}/月 | {floor_area}坪 | "
@@ -523,18 +516,18 @@ def render_markdown_report(
         "",
         f"- 來源資料: `{Path(input_path).name}`",
         f"- 候選總數: `{len(results)}`",
-        f"- 直接看: `{summary.direct_count}`",
-        f"- 待看圖確認: `{summary.review_count}`",
-        f"- 有流理臺訊號: `{summary.kitchen_confirmed_count}`",
+        f"- 可直接看: `{summary.direct_count}`",
+        f"- 看圖確認: `{summary.review_count}`",
+        f"- 文字提及流理臺: `{summary.kitchen_confirmed_count}`",
         f"- 有圖片: `{summary.with_images_count}`",
         f"- 平均月租: `{summary.average_price if summary.average_price is not None else '未統計'}`",
         f"- 來源分布: `{', '.join(f'{k}:{v}' for k, v in summary.platform_counts.items())}`",
         f"- 目的地: `{criteria.destination_address or '未指定'}`",
         f"- 通勤模式: `{criteria.transport_mode}`",
         f"- 最長通勤: `{criteria.max_commute_minutes if criteria.max_commute_minutes is not None else '未限制'}`",
-        f"- 流理臺需求: `{'需要' if criteria.require_kitchen_sink else '未要求'}`",
+        f"- 流理臺偏好: `{'看文字提及，否則看圖確認' if criteria.require_kitchen_sink else '未要求'}`",
         "",
-        "## 直接看",
+        "## 文字提及流理臺",
     ]
 
     if direct:
@@ -548,9 +541,9 @@ def render_markdown_report(
                 ]
             )
     else:
-        lines.append("目前沒有完全符合且已確認必要條件的物件。")
+        lines.append("目前沒有文字明確提及流理臺的物件。")
 
-    lines.extend(["", "## 待看圖確認"])
+    lines.extend(["", "## 看圖確認"])
     if review:
         for idx, result in enumerate(review, 1):
             lines.extend(
@@ -577,7 +570,7 @@ def render_result_card(result: AnalysisResult) -> str:
     price = html.escape(result.row.get("price", "?"))
     floor_area = html.escape(result.row.get("floor_area", "") or "?")
     commute = str(result.commute_best_minutes) if result.commute_best_minutes is not None else "n/a"
-    kitchen = "已確認" if result.kitchen_sink_signal else "待確認" if result.needs_image_review else "無訊號"
+    kitchen = "文字提及" if result.kitchen_sink_signal else "看圖確認" if result.needs_image_review else "未提及"
     reason_text = html.escape("；".join(result.matched_reasons))
     band = score_band(result.score)
     badge_class = f"band-{band.lower()}"
@@ -768,18 +761,18 @@ def render_html_report(
       <ul>
         <li>來源資料：{html.escape(Path(input_path).name)}</li>
         <li>候選總數：{len(results)}</li>
-        <li>直接看：{summary.direct_count}　待看圖確認：{summary.review_count}</li>
-        <li>有流理臺訊號：{summary.kitchen_confirmed_count}　有圖片：{summary.with_images_count}</li>
+        <li>可直接看：{summary.direct_count}　看圖確認：{summary.review_count}</li>
+        <li>文字提及流理臺：{summary.kitchen_confirmed_count}　有圖片：{summary.with_images_count}</li>
         <li>平均月租：{summary.average_price if summary.average_price is not None else '未統計'} 元</li>
         <li>來源分布：{html.escape(platform_text)}</li>
         <li>目的地：{html.escape(criteria.destination_address or "未指定")}</li>
         <li>通勤模式：{html.escape(criteria.transport_mode)}</li>
         <li>最長通勤：{criteria.max_commute_minutes if criteria.max_commute_minutes is not None else "未限制"}</li>
-        <li>流理臺需求：{"需要" if criteria.require_kitchen_sink else "未要求"}</li>
+        <li>流理臺偏好：{"看文字提及，否則看圖確認" if criteria.require_kitchen_sink else "未要求"}</li>
       </ul>
     </header>
-    {section_html("直接看", direct, "目前沒有完全符合且已確認必要條件的物件。")}
-    {section_html("待看圖確認", review, "目前沒有需要額外看圖確認的物件。")}
+    {section_html("文字提及流理臺", direct, "目前沒有文字明確提及流理臺的物件。")}
+    {section_html("看圖確認", review, "目前沒有需要額外看圖確認的物件。")}
   </main>
 </body>
 </html>
@@ -859,7 +852,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--district", action="append", default=[], help="限定行政區，可重複傳入")
     parser.add_argument("--require-keyword", action="append", default=[], help="必須出現在文本中的關鍵字")
     parser.add_argument("--exclude-keyword", action="append", default=[], help="排除關鍵字")
-    parser.add_argument("--require-kitchen-sink", action="store_true", help="偏好有流理臺/可開伙訊號")
+    parser.add_argument("--require-kitchen-sink", action="store_true", help="優先找文字明確提到流理臺的物件；未提及者標成看圖確認")
     parser.add_argument("--strict-features", action="store_true", help="必要設施未確認時直接排除")
     parser.add_argument("--max-commute", type=int, help="最長可接受通勤分鐘數")
     parser.add_argument("--transport-mode", choices=["either", "metro", "bike"], default="either")
