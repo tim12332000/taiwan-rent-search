@@ -18,6 +18,7 @@ from src.main import (
     build_multi_source_output_path,
     dedupe_records,
     export_to_csv,
+    filter_records_for_focus,
     format_coverage,
     main as main_entry,
     sanitize_csv_value,
@@ -1283,13 +1284,13 @@ class TestCsvExport:
                 updated_at=datetime.now(),
             )
         ]
-        calls = {"mixrent": [], "ddroom": []}
+        calls = {"591": [], "mixrent": [], "ddroom": []}
 
-        monkeypatch.setattr(
-            Fang591Scraper,
-            "scrape",
-            lambda self, county="", district="", max_pages=3, enrich_details=False, detail_limit=10: base_591,
-        )
+        def fake_591(self, county="", district="", max_pages=3, enrich_details=False, detail_limit=10):
+            calls["591"].append((county, district, max_pages))
+            return base_591
+
+        monkeypatch.setattr(Fang591Scraper, "scrape", fake_591)
 
         def fake_mixrent(self, county="台北市", district="", query="", max_pages=3):
             calls["mixrent"].append((county, district, query, max_pages))
@@ -1315,6 +1316,10 @@ class TestCsvExport:
 
         assert path == output
         assert len(written_records) == 3
+        assert calls["591"] == [
+            ("台北市", "", 2),
+            ("台北市", "信義區", 4),
+        ]
         assert calls["mixrent"] == [
             ("台北市", "", "", 2),
             ("台北市", "信義區", "台北市信義區松仁路100號", 4),
@@ -1357,9 +1362,25 @@ class TestCsvExport:
 
         assert messages[0][0] == "開始建立全市基礎資料池..."
         assert any("基礎資料池 正在抓 591" in message for message, _, _, _ in messages)
+        assert any("目的地加抓 正在抓 591" in message for message, _, _, _ in messages)
         assert any("目的地加抓 正在抓 mixrent" in message for message, _, _, _ in messages)
         assert messages[-1][0].startswith("資料池已輸出到 ")
         assert messages[-1][3] == 2
+
+    def test_filter_records_for_focus_matches_district_and_area(self):
+        district_match = self._sample_records()[0]
+        district_match.location.district = "信義區"
+        area_match = self._sample_records()[1]
+        area_match.location.area = "松仁路"
+        area_match.location.district = "大安區"
+
+        filtered = filter_records_for_focus(
+            [district_match, area_match],
+            district="信義區",
+            query="台北市信義區松仁路100號",
+        )
+
+        assert filtered == [district_match, area_match]
 
 
 class TestLocationAndContact:

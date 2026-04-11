@@ -133,6 +133,38 @@ def format_coverage(label: str, count: int, total: int) -> str:
     return f"{label} {ratio} ({percent}%)"
 
 
+def normalize_focus_text(text: str) -> str:
+    return "".join((text or "").replace("臺", "台").lower().split())
+
+
+def filter_records_for_focus(
+    records: list[HousingData],
+    district: str = "",
+    query: str = "",
+) -> list[HousingData]:
+    normalized_query = normalize_focus_text(query)
+    filtered: list[HousingData] = []
+
+    for record in records:
+        if district and record.location.district == district:
+            filtered.append(record)
+            continue
+
+        area = normalize_focus_text(record.location.area or "")
+        title = normalize_focus_text(record.title)
+        description = normalize_focus_text(record.description)
+        if area and area in normalized_query:
+            filtered.append(record)
+            continue
+        if normalized_query and normalized_query in title:
+            filtered.append(record)
+            continue
+        if normalized_query and normalized_query in description:
+            filtered.append(record)
+
+    return filtered
+
+
 def sanitize_csv_value(value):
     """避免試算表把內容當成公式執行。"""
     if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
@@ -230,6 +262,7 @@ def scrape_sources(
     progress_base: int = 0,
     progress_total: int | None = None,
     progress_label: str = "",
+    focus_filter: bool = False,
 ) -> list[HousingData]:
     records: list[HousingData] = []
     phase_label = f"{progress_label} " if progress_label else ""
@@ -265,6 +298,8 @@ def scrape_sources(
                 records.extend(scraper.scrape(county=county, district=district, keyword=query, max_pages=max_pages))
         else:
             raise ValueError(f"Unsupported source: {source}")
+        if focus_filter:
+            records = filter_records_for_focus(records, district=district, query=query)
         report_progress(
             progress_callback,
             f"{phase_label}已完成 {source}，目前累積 {len(records)} 筆",
@@ -315,7 +350,7 @@ def scrape_sources_with_focus(
 ) -> tuple[Path, list[HousingData]]:
     district = extract_district_from_text(destination_address) or ""
     query = destination_address.strip() or f"{county}{district}".strip()
-    focused_sources = [source for source in sources if source in {"mixrent", "ddroom"}]
+    focused_sources = list(sources)
     total_steps = len(sources) + len(focused_sources) + 2
     step = 0
 
@@ -347,6 +382,7 @@ def scrape_sources_with_focus(
         progress_base=step,
         progress_total=total_steps,
         progress_label="目的地加抓",
+        focus_filter=True,
     ) if focused_sources and query else []
     step += len(focused_sources)
     if focused_sources and query:
