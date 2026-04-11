@@ -184,6 +184,13 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "gallery-modal" in html_text
     assert "openGallery" in html_text
     assert "moveGallery" in html_text
+    assert "preset-cooking-best" in html_text
+    assert "preset-review-images" in html_text
+    assert "preset-reset" in html_text
+    assert "先看最能煮飯" in html_text
+    assert "看圖審核" in html_text
+    assert "全部重設" in html_text
+    assert "applyPreset" in html_text
     assert "data-gallery-id" in html_text
     assert "看圖 ${item.images.length} 張" in html_text
     assert "搜尋速度" in html_text

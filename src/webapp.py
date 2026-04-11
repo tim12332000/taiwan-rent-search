@@ -264,6 +264,22 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       gap: 10px;
       margin-bottom: 16px;
     }}
+    .presets {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }}
+    .presets button {{
+      border: 1px solid var(--line);
+      background: #fff7ed;
+      color: var(--accent-2);
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+    }}
     .summary .metric {{
       padding: 12px 14px;
       border-radius: 16px;
@@ -536,6 +552,11 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       </aside>
 
       <section>
+        <div class="presets">
+          <button id="preset-cooking-best" type="button">先看最能煮飯</button>
+          <button id="preset-review-images" type="button">看圖審核</button>
+          <button id="preset-reset" type="button">全部重設</button>
+        </div>
         <div class="summary">
           <div class="metric">目前顯示<strong id="count-visible">0</strong></div>
           <div class="metric">資料來源<strong id="count-platforms">0</strong></div>
@@ -589,6 +610,9 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       avgPrice: document.getElementById('avg-price'),
       searchSpeed: document.getElementById('search-speed'),
       speedHint: document.getElementById('speed-hint'),
+      presetCookingBest: document.getElementById('preset-cooking-best'),
+      presetReviewImages: document.getElementById('preset-review-images'),
+      presetReset: document.getElementById('preset-reset'),
       galleryModal: document.getElementById('gallery-modal'),
       galleryTitle: document.getElementById('gallery-title'),
       galleryCount: document.getElementById('gallery-count'),
@@ -933,6 +957,29 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       }});
     }}
 
+    function applyPreset(name) {{
+      if (name === 'cooking-best') {{
+        els.cookingLevel.value = '3';
+        els.hasImages.checked = true;
+        els.sortBy.value = 'cooking-desc';
+      }} else if (name === 'review-images') {{
+        els.cookingLevel.value = '1';
+        els.hasImages.checked = true;
+        els.sortBy.value = 'cooking-desc';
+      }} else if (name === 'reset') {{
+        els.q.value = '';
+        els.destination.value = '';
+        els.district.value = '';
+        els.platform.value = '';
+        els.maxPrice.value = '';
+        els.minArea.value = '';
+        els.cookingLevel.value = '';
+        els.hasImages.checked = false;
+        els.sortBy.value = 'cooking-desc';
+      }}
+      scheduleApplyFilters();
+    }}
+
     fillSelect(els.district, uniqueValues('district'));
     fillSelect(els.platform, uniqueValues('platform'));
     const initialQuery = pageParams.get('q');
@@ -952,6 +999,9 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     els.galleryModal.addEventListener('click', (event) => {{
       if (event.target === els.galleryModal) closeGallery();
     }});
+    els.presetCookingBest.addEventListener('click', () => applyPreset('cooking-best'));
+    els.presetReviewImages.addEventListener('click', () => applyPreset('review-images'));
+    els.presetReset.addEventListener('click', () => applyPreset('reset'));
     document.addEventListener('keydown', (event) => {{
       if (!galleryState) return;
       if (event.key === 'Escape') closeGallery();
