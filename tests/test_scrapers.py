@@ -22,6 +22,7 @@ from src.main import (
     format_coverage,
     main as main_entry,
     sanitize_csv_value,
+    scrape_sources,
     scrape_sources_with_focus,
     scrape_sources_to_csv,
     scrape_to_csv,
@@ -1381,6 +1382,24 @@ class TestCsvExport:
         )
 
         assert filtered == [district_match, area_match]
+
+    def test_scrape_sources_parallelizes_multiple_sources(self, monkeypatch):
+        calls = []
+
+        def fake_scrape_single_source(source, **kwargs):
+            calls.append(source)
+            return [self._sample_records()[0]]
+
+        monkeypatch.setattr("src.main.scrape_single_source", fake_scrape_single_source)
+
+        records = scrape_sources(
+            ["591", "mixrent", "ddroom"],
+            "台北市",
+            delay=0,
+        )
+
+        assert len(records) == 1
+        assert set(calls) == {"591", "mixrent", "ddroom"}
 
 
 class TestLocationAndContact:

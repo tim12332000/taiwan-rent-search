@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -165,6 +166,37 @@ def filter_records_for_focus(
     return filtered
 
 
+def scrape_single_source(
+    source: str,
+    county: str,
+    delay: float = 2.0,
+    max_pages: int = 3,
+    enrich_591_details: bool = False,
+    enrich_591_detail_limit: int = 10,
+    district: str = "",
+    query: str = "",
+) -> list[HousingData]:
+    if source == "591":
+        with Fang591Scraper(delay=delay) as scraper:
+            return scraper.scrape(
+                county=county,
+                district=district,
+                max_pages=max_pages,
+                enrich_details=enrich_591_details,
+                detail_limit=enrich_591_detail_limit,
+            )
+    if source == "mixrent":
+        with MixRentScraper(delay=delay) as scraper:
+            return scraper.scrape(county=county, district=district, query=query, max_pages=max_pages)
+    if source == "housefun":
+        with HousefunScraper(delay=delay) as scraper:
+            return scraper.scrape(county=county, max_pages=max_pages)
+    if source == "ddroom":
+        with DDRoomScraper(delay=delay) as scraper:
+            return scraper.scrape(county=county, district=district, keyword=query, max_pages=max_pages)
+    raise ValueError(f"Unsupported source: {source}")
+
+
 def sanitize_csv_value(value):
     """避免試算表把內容當成公式執行。"""
     if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
@@ -263,11 +295,13 @@ def scrape_sources(
     progress_total: int | None = None,
     progress_label: str = "",
     focus_filter: bool = False,
+    parallel_sources: bool = True,
 ) -> list[HousingData]:
     records: list[HousingData] = []
     phase_label = f"{progress_label} " if progress_label else ""
     total_sources = len(sources)
     total_steps = progress_total or total_sources
+
     for index, source in enumerate(sources, start=1):
         report_progress(
             progress_callback,
@@ -276,30 +310,47 @@ def scrape_sources(
             total_steps,
             len(records),
         )
-        if source == "591":
-            with Fang591Scraper(delay=delay) as scraper:
-                records.extend(
-                    scraper.scrape(
+
+    should_parallelize = parallel_sources and len(sources) > 1
+    if should_parallelize:
+        with ThreadPoolExecutor(max_workers=min(len(sources), 4)) as executor:
+            source_results = list(
+                executor.map(
+                    lambda current_source: scrape_single_source(
+                        current_source,
                         county=county,
-                        district=district,
+                        delay=delay,
                         max_pages=max_pages,
-                        enrich_details=enrich_591_details,
-                        detail_limit=enrich_591_detail_limit,
-                    )
+                        enrich_591_details=enrich_591_details,
+                        enrich_591_detail_limit=enrich_591_detail_limit,
+                        district=district,
+                        query=query,
+                    ),
+                    sources,
                 )
-        elif source == "mixrent":
-            with MixRentScraper(delay=delay) as scraper:
-                records.extend(scraper.scrape(county=county, district=district, query=query, max_pages=max_pages))
-        elif source == "housefun":
-            with HousefunScraper(delay=delay) as scraper:
-                records.extend(scraper.scrape(county=county, max_pages=max_pages))
-        elif source == "ddroom":
-            with DDRoomScraper(delay=delay) as scraper:
-                records.extend(scraper.scrape(county=county, district=district, keyword=query, max_pages=max_pages))
-        else:
-            raise ValueError(f"Unsupported source: {source}")
-        if focus_filter:
-            records = filter_records_for_focus(records, district=district, query=query)
+            )
+    else:
+        source_results = [
+            scrape_single_source(
+                source,
+                county=county,
+                delay=delay,
+                max_pages=max_pages,
+                enrich_591_details=enrich_591_details,
+                enrich_591_detail_limit=enrich_591_detail_limit,
+                district=district,
+                query=query,
+            )
+            for source in sources
+        ]
+
+    for index, (source, source_records) in enumerate(zip(sources, source_results), start=1):
+        filtered_records = (
+            filter_records_for_focus(source_records, district=district, query=query)
+            if focus_filter
+            else source_records
+        )
+        records.extend(filtered_records)
         report_progress(
             progress_callback,
             f"{phase_label}已完成 {source}，目前累積 {len(records)} 筆",
