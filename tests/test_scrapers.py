@@ -1136,12 +1136,16 @@ class TestCsvExport:
         assert "Records: 2" in out
         assert "Source mix: 591:2" in out
         assert "Coverage:" in out
+        assert "detail owner" in out
+        assert "detail phone" in out
 
     def test_summarize_dataset_counts_quality_signals(self):
         records = self._sample_records()
         records[0].floor = "3F"
         records[0].detail_rules = "不可養寵物"
         records[0].detail_facilities = ["冰箱"]
+        records[0].detail_owner_name = "王先生"
+        records[0].detail_contact_phone = "0912-345-678"
 
         summary = summarize_dataset(records)
 
@@ -1151,6 +1155,8 @@ class TestCsvExport:
         assert summary.with_floor_area_count == 2
         assert summary.with_floor_count == 1
         assert summary.with_detail_count == 1
+        assert summary.with_detail_owner_count == 1
+        assert summary.with_detail_phone_count == 1
 
     def test_format_coverage_includes_ratio_and_percentage(self):
         assert format_coverage("images", 1, 4) == "images 1/4 (25%)"

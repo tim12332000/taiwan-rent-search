@@ -75,6 +75,8 @@ class DatasetSummary:
     with_floor_area_count: int
     with_floor_count: int
     with_detail_count: int
+    with_detail_owner_count: int
+    with_detail_phone_count: int
 
 
 def report_progress(
@@ -94,6 +96,8 @@ def summarize_dataset(records: list[HousingData]) -> DatasetSummary:
     with_floor_area_count = 0
     with_floor_count = 0
     with_detail_count = 0
+    with_detail_owner_count = 0
+    with_detail_phone_count = 0
 
     for record in records:
         platform_counts[record.platform] = platform_counts.get(record.platform, 0) + 1
@@ -103,8 +107,13 @@ def summarize_dataset(records: list[HousingData]) -> DatasetSummary:
             with_floor_area_count += 1
         if (record.floor or "").strip():
             with_floor_count += 1
-        if any(getattr(record, field) for field in DETAIL_COVERAGE_FIELDS):
+        has_detail = any(getattr(record, field) for field in DETAIL_COVERAGE_FIELDS)
+        if has_detail:
             with_detail_count += 1
+        if (record.detail_owner_name or "").strip():
+            with_detail_owner_count += 1
+        if (record.detail_contact_phone or "").strip():
+            with_detail_phone_count += 1
 
     return DatasetSummary(
         total=len(records),
@@ -113,6 +122,8 @@ def summarize_dataset(records: list[HousingData]) -> DatasetSummary:
         with_floor_area_count=with_floor_area_count,
         with_floor_count=with_floor_count,
         with_detail_count=with_detail_count,
+        with_detail_owner_count=with_detail_owner_count,
+        with_detail_phone_count=with_detail_phone_count,
     )
 
 
@@ -387,6 +398,8 @@ def main() -> None:
             format_coverage("floor area", summary.with_floor_area_count, summary.total),
             format_coverage("floor", summary.with_floor_count, summary.total),
             format_coverage("detail", summary.with_detail_count, summary.total),
+            format_coverage("detail owner", summary.with_detail_owner_count, summary.total),
+            format_coverage("detail phone", summary.with_detail_phone_count, summary.total),
         ]
     )
     print(f"CSV exported: {path}")
