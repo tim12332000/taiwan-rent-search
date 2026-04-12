@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlencode
 
+from .ai_cooking_review import review_dataset_images_in_place
 from .analysis import extract_county_from_text, extract_district_from_text
 from .local_site_state import resolve_running_local_site_base_url
 from .main import scrape_sources_with_focus
@@ -42,6 +43,8 @@ def refresh_search_for_destination(
     focus_max_pages: int = 5,
     enrich_591_details: bool = True,
     enrich_591_detail_limit: int = 20,
+    ai_review_max_listings: int = 8,
+    ai_review_max_images: int = 3,
     progress_callback: ProgressCallback | None = None,
 ) -> tuple[Path, Path, int, str, str]:
     resolved_county = county or extract_county_from_text(destination_address, default="台北市") or "台北市"
@@ -60,6 +63,25 @@ def refresh_search_for_destination(
         enrich_591_detail_limit=enrich_591_detail_limit,
         progress_callback=progress_callback,
     )
+    if ai_review_max_listings > 0 and ai_review_max_images > 0:
+        try:
+            if progress_callback:
+                progress_callback("AI 看圖判斷中...", None, None, len(records))
+            ai_summary = review_dataset_images_in_place(
+                dataset_path=dataset_path,
+                max_listings=ai_review_max_listings,
+                max_images_per_listing=ai_review_max_images,
+            )
+            if progress_callback:
+                progress_callback(
+                    f"AI 看圖完成，本輪新判斷 {ai_summary['reviewed_count']} 筆，快取命中 {ai_summary['cached_count']} 筆",
+                    None,
+                    None,
+                    len(records),
+                )
+        except Exception as exc:
+            if progress_callback:
+                progress_callback(f"AI 看圖略過：{exc}", None, None, len(records))
     if progress_callback:
         progress_callback("正在產生搜尋頁...", None, None, len(records))
     target_search_path = Path(search_output_path) if search_output_path else build_default_search_app_path()
@@ -79,6 +101,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-max-pages", type=int, default=3, help="全市資料池每個來源抓幾頁")
     parser.add_argument("--focus-max-pages", type=int, default=5, help="目的地加抓每個來源抓幾頁")
     parser.add_argument("--detail-limit", type=int, default=20, help="最多補抓幾筆 591 詳頁")
+    parser.add_argument("--ai-review-max-listings", type=int, default=8, help="最多用 AI 看圖幾筆候選")
+    parser.add_argument("--ai-review-max-images", type=int, default=3, help="每筆最多送幾張圖給 AI")
     parser.add_argument("--open", action="store_true", help="完成後直接開啟搜尋頁")
     return parser.parse_args()
 
@@ -94,6 +118,8 @@ def main() -> None:
         base_max_pages=args.base_max_pages,
         focus_max_pages=args.focus_max_pages,
         enrich_591_detail_limit=args.detail_limit,
+        ai_review_max_listings=args.ai_review_max_listings,
+        ai_review_max_images=args.ai_review_max_images,
     )
     if args.open:
         webbrowser.open(build_open_url(args.destination_address))

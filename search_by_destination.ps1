@@ -3,9 +3,13 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
 
-$destination = Read-Host "請輸入目的地地址"
+Add-Type -AssemblyName Microsoft.VisualBasic
+$destination = [Microsoft.VisualBasic.Interaction]::InputBox(
+    "請輸入目的地地址",
+    "租屋目的地搜尋",
+    ""
+)
 if ([string]::IsNullOrWhiteSpace($destination)) {
-    Write-Host "未輸入目的地，已取消。"
     exit 1
 }
 

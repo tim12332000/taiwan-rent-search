@@ -45,6 +45,9 @@ data/downloads/
 data/*.csv
 data/*.md
 data/*.html
+data/ai_cooking_reviews.json
+data/ai_usage.jsonl
+data/images/
 data/cases/*/current_dataset.csv
 data/cases/*/dataset_*.csv
 data/cases/*/search_app.html

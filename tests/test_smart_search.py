@@ -33,6 +33,14 @@ def test_refresh_search_for_destination_runs_focus_pipeline(monkeypatch, tmp_pat
         return stable
 
     monkeypatch.setattr("src.smart_search.scrape_sources_with_focus", fake_scrape_sources_with_focus)
+    def fake_review_dataset_images_in_place(dataset_path, max_listings, max_images_per_listing):
+        calls["ai"] = (dataset_path, max_listings, max_images_per_listing)
+        return {
+            "reviewed_count": 2,
+            "cached_count": 1,
+        }
+
+    monkeypatch.setattr("src.smart_search.review_dataset_images_in_place", fake_review_dataset_images_in_place)
     monkeypatch.setattr("src.smart_search.export_search_app", fake_export_search_app)
     monkeypatch.setattr("src.smart_search.build_default_search_app_path", lambda: stable)
 
@@ -52,6 +60,7 @@ def test_refresh_search_for_destination_runs_focus_pipeline(monkeypatch, tmp_pat
     assert calls["scrape"]["destination_address"] == "台北市信義區松仁路100號"
     assert calls["scrape"]["base_max_pages"] == 2
     assert calls["scrape"]["focus_max_pages"] == 4
+    assert calls["ai"] == (dataset, 8, 3)
     assert calls["webapp"] == (dataset, stable)
 
 
@@ -65,6 +74,13 @@ def test_refresh_search_for_destination_forwards_progress_callback(monkeypatch, 
         return dataset, [object()]
 
     monkeypatch.setattr("src.smart_search.scrape_sources_with_focus", fake_scrape_sources_with_focus)
+    monkeypatch.setattr(
+        "src.smart_search.review_dataset_images_in_place",
+        lambda dataset_path, max_listings, max_images_per_listing: {
+            "reviewed_count": 2,
+            "cached_count": 1,
+        },
+    )
     monkeypatch.setattr("src.smart_search.export_search_app", lambda input_path, output_path=None: stable)
     monkeypatch.setattr("src.smart_search.build_default_search_app_path", lambda: stable)
 
@@ -74,4 +90,34 @@ def test_refresh_search_for_destination_forwards_progress_callback(monkeypatch, 
     )
 
     assert messages[0] == ("抓取中", 1, 4, 12)
+    assert messages[1] == ("AI 看圖判斷中...", None, None, 1)
+    assert messages[2] == ("AI 看圖完成，本輪新判斷 2 筆，快取命中 1 筆", None, None, 1)
+    assert messages[-1] == ("搜尋頁已更新", None, None, 1)
+
+
+def test_refresh_search_for_destination_continues_when_ai_review_fails(monkeypatch, tmp_path):
+    dataset = tmp_path / "focused.csv"
+    stable = tmp_path / "search_app.html"
+    messages = []
+
+    monkeypatch.setattr("src.smart_search.scrape_sources_with_focus", lambda **kwargs: (dataset, [object()]))
+    monkeypatch.setattr(
+        "src.smart_search.review_dataset_images_in_place",
+        lambda dataset_path, max_listings, max_images_per_listing: (_ for _ in ()).throw(FileNotFoundError("找不到 codex CLI")),
+    )
+    monkeypatch.setattr("src.smart_search.export_search_app", lambda input_path, output_path=None: stable)
+    monkeypatch.setattr("src.smart_search.build_default_search_app_path", lambda: stable)
+
+    dataset_path, search_path, record_count, county, district = refresh_search_for_destination(
+        destination_address="台北市信義區松仁路100號",
+        progress_callback=lambda message, current, total, records: messages.append((message, current, total, records)),
+    )
+
+    assert dataset_path == dataset
+    assert search_path == stable
+    assert record_count == 1
+    assert county == "台北市"
+    assert district == "信義區"
+    assert ("AI 看圖判斷中...", None, None, 1) in messages
+    assert ("AI 看圖略過：找不到 codex CLI", None, None, 1) in messages
     assert messages[-1] == ("搜尋頁已更新", None, None, 1)

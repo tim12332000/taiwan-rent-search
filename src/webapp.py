@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import time
 import webbrowser
 from pathlib import Path
 
@@ -33,6 +34,12 @@ def build_search_app_output_path(input_path: str | Path) -> Path:
 
 def build_default_search_app_path() -> Path:
     return DEFAULT_SEARCH_APP_PATH
+
+
+def build_review_shortlist_output_path(input_path: str | Path) -> Path:
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    source_path = Path(input_path)
+    return source_path.parent / f"{source_path.stem}_shortlist_{timestamp}.md"
 
 
 def search_speed_score(duration_ms: float) -> int:
@@ -81,6 +88,64 @@ def find_ai_review_path_for_dataset(input_path: str | Path) -> Path | None:
     return candidate if candidate.exists() else None
 
 
+def find_ai_usage_log_path_for_dataset(input_path: str | Path) -> Path | None:
+    candidate = Path(input_path).parent / "ai_usage.jsonl"
+    return candidate if candidate.exists() else None
+
+
+def summarize_ai_usage_log(path: str | Path | None) -> dict[str, object]:
+    if not path:
+        return {
+            "exists": False,
+            "entries": 0,
+            "input_tokens": 0,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "last_timestamp": "",
+            "last_listing_id": "",
+        }
+
+    log_path = Path(path)
+    if not log_path.exists():
+        return {
+            "exists": False,
+            "entries": 0,
+            "input_tokens": 0,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "last_timestamp": "",
+            "last_listing_id": "",
+        }
+
+    summary = {
+        "exists": True,
+        "entries": 0,
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "last_timestamp": "",
+        "last_listing_id": "",
+    }
+    with log_path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            summary["entries"] += 1
+            summary["input_tokens"] += int(payload.get("input_tokens") or 0)
+            summary["cached_input_tokens"] += int(payload.get("cached_input_tokens") or 0)
+            summary["output_tokens"] += int(payload.get("output_tokens") or 0)
+            summary["last_timestamp"] = str(payload.get("timestamp") or summary["last_timestamp"])
+            summary["last_listing_id"] = str(payload.get("listing_id") or summary["last_listing_id"])
+    return summary
+
+
 def listing_to_view_model(row: dict[str, str], ai_review: dict[str, object] | None = None) -> dict[str, object]:
     images = parse_images(row.get("images"))
     address = build_listing_address(row)
@@ -88,7 +153,8 @@ def listing_to_view_model(row: dict[str, str], ai_review: dict[str, object] | No
     nearest_station = find_nearest_station(center.lat if center else None, center.lon if center else None)
     cooking_score, cooking_label, cooking_reason = cooking_convenience_profile(row)
     if ai_review:
-        cooking_score = int(ai_review.get("score") or cooking_score)
+        if ai_review.get("score") is not None:
+            cooking_score = int(ai_review["score"])
         cooking_label = str(ai_review.get("label") or cooking_label)
         cooking_reason = str(ai_review.get("reason") or cooking_reason)
     search_text = " ".join(
@@ -150,10 +216,82 @@ def prepare_listing_view_models(input_path: str | Path) -> list[dict[str, object
     return [listing_to_view_model(row, ai_reviews.get(row.get("id", ""))) for row in rows]
 
 
+def render_review_shortlist_markdown(
+    input_path: str | Path,
+    items: list[dict[str, object]],
+    *,
+    destination: str = "",
+) -> str:
+    lines = [
+        "# 租屋 shortlist",
+        "",
+        f"- 來源資料: `{Path(input_path).name}`",
+        f"- 匯出筆數: `{len(items)}`",
+        f"- 目的地: `{destination or '未指定'}`",
+        f"- 匯出時間: `{time.strftime('%Y-%m-%d %H:%M:%S')}`",
+        "",
+    ]
+
+    for index, item in enumerate(items, 1):
+        title = str(item.get("title") or "未命名房源")
+        district = str(item.get("district") or "未知區域")
+        area = str(item.get("area") or "路段待補")
+        platform = str(item.get("platform") or "unknown")
+        price = item.get("price")
+        floor_area = item.get("floor_area")
+        cooking_label = str(item.get("cooking_convenience_label") or "未提及")
+        cooking_reason = str(item.get("cooking_convenience_reason") or "待補")
+        url = str(item.get("url") or "")
+        confidence = item.get("ai_cooking_confidence")
+        ai_confidence_text = (
+            f"{round(float(confidence) * 100)}%"
+            if confidence is not None and confidence != ""
+            else "待補"
+        )
+        price_text = f"${int(price)}/月" if price not in (None, "") else "租金待補"
+        area_text = f"{floor_area}坪" if floor_area not in (None, "") else "坪數待補"
+
+        lines.extend(
+            [
+                f"{index}. **{title}**",
+                f"   - {platform} | {district} | {area} | {price_text} | {area_text}",
+                f"   - 可煮飯：{cooking_label}",
+                f"   - AI 信心：{ai_confidence_text}",
+                f"   - 理由：{cooking_reason}",
+                f"   - 連結：{url}",
+                "",
+            ]
+        )
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def export_review_shortlist(
+    input_path: str | Path,
+    items: list[dict[str, object]],
+    *,
+    destination: str = "",
+    output_path: str | Path | None = None,
+) -> Path:
+    target = Path(output_path) if output_path else build_review_shortlist_output_path(input_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        render_review_shortlist_markdown(input_path, items, destination=destination),
+        encoding="utf-8",
+    )
+    return target
+
+
 def render_search_app_html(input_path: str | Path, listings: list[dict[str, object]]) -> str:
-    source_name = html.escape(Path(input_path).name)
+    input_path = Path(input_path)
+    source_name = html.escape(input_path.name)
+    source_path_json = json.dumps(str(input_path), ensure_ascii=False)
     listings_json = json.dumps(listings, ensure_ascii=False)
     district_centers_json = json.dumps(TAIPEI_DISTRICT_CENTERS, ensure_ascii=False)
+    ai_usage_summary_json = json.dumps(
+        summarize_ai_usage_log(find_ai_usage_log_path_for_dataset(input_path)),
+        ensure_ascii=False,
+    )
     return f"""<!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -412,6 +550,10 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       font: inherit;
       font-weight: 700;
     }}
+    .gallery-actions button[disabled] {{
+      opacity: .65;
+      cursor: wait;
+    }}
     .review-actions {{
       display: flex;
       flex-wrap: wrap;
@@ -598,15 +740,19 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         <div class="presets">
           <button id="preset-cooking-best" type="button">先看最能煮飯</button>
           <button id="preset-review-images" type="button">看圖審核</button>
+          <button id="export-shortlist" type="button">匯出 shortlist</button>
           <button id="preset-reset" type="button">全部重設</button>
         </div>
         <div class="summary">
           <div class="metric">目前顯示<strong id="count-visible">0</strong></div>
           <div class="metric">資料來源<strong id="count-platforms">0</strong></div>
           <div class="metric">較適合煮飯<strong id="count-kitchen">0</strong></div>
+          <div class="metric">已標記不錯<strong id="count-shortlist">0</strong></div>
           <div class="metric">平均月租<strong id="avg-price">-</strong></div>
           <div class="metric">搜尋速度<strong id="search-speed">-</strong></div>
         </div>
+        <div id="ai-status" class="meta-sub">AI 會自動審核目前畫面上的候選房源。</div>
+        <div id="export-status" class="meta-sub">目前還沒有標記為不錯的房源。</div>
         <div id="speed-hint" class="meta-sub">搜尋速度目標：{SEARCH_SPEED_BUDGET_MS}ms 內。</div>
         <div id="results" class="results"></div>
         <div id="empty" class="empty" hidden>目前沒有符合條件的房源。</div>
@@ -634,6 +780,8 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
   <script>
     const listings = {listings_json};
     const districtCenters = {district_centers_json};
+    const sourceDatasetPath = {source_path_json};
+    const aiUsageSummary = {ai_usage_summary_json};
     const pageParams = new URLSearchParams(window.location.search);
     const els = {{
       q: document.getElementById('q'),
@@ -650,11 +798,15 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       countVisible: document.getElementById('count-visible'),
       countPlatforms: document.getElementById('count-platforms'),
       countKitchen: document.getElementById('count-kitchen'),
+      countShortlist: document.getElementById('count-shortlist'),
       avgPrice: document.getElementById('avg-price'),
       searchSpeed: document.getElementById('search-speed'),
+      aiStatus: document.getElementById('ai-status'),
+      exportStatus: document.getElementById('export-status'),
       speedHint: document.getElementById('speed-hint'),
       presetCookingBest: document.getElementById('preset-cooking-best'),
       presetReviewImages: document.getElementById('preset-review-images'),
+      exportShortlist: document.getElementById('export-shortlist'),
       presetReset: document.getElementById('preset-reset'),
       galleryModal: document.getElementById('gallery-modal'),
       galleryTitle: document.getElementById('gallery-title'),
@@ -667,10 +819,19 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     }};
     const SEARCH_SPEED_BUDGET_MS = {SEARCH_SPEED_BUDGET_MS};
     const SEARCH_SPEED_WARNING_MS = {SEARCH_SPEED_WARNING_MS};
+    const AI_AUTO_REVIEW_CONCURRENCY = 2;
+    const AI_AUTO_REVIEW_VISIBLE_LIMIT = 6;
     const REVIEW_STORAGE_KEY = 'taiwan-rent-search.review-decisions';
     let filterFrame = null;
     let galleryState = null;
     let reviewDecisions = {{}};
+    const aiReviewJobs = {{}};
+    const aiAutoReviewQueue = [];
+    const aiAutoReviewQueued = new Set();
+    let aiReviewActiveCount = 0;
+    let lastVisibleListingIds = [];
+    let aiStatusMessage = 'AI 會自動審核目前畫面上的候選房源。';
+    let shortlistedCount = 0;
 
     const uniqueValues = (key) => [...new Set(listings.map(item => item[key]).filter(Boolean))].sort();
     const districts = uniqueValues('district');
@@ -834,6 +995,26 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       }};
     }}
 
+    function getAiReviewState(listingId) {{
+      return aiReviewJobs[listingId] || null;
+    }}
+
+    function setAiStatusMessage(message) {{
+      aiStatusMessage = message || 'AI 會自動審核目前畫面上的候選房源。';
+      els.aiStatus.textContent = aiStatusMessage;
+    }}
+
+    function hasAiReviewResult(item) {{
+      return item.ai_cooking_confidence !== null && item.ai_cooking_confidence !== undefined;
+    }}
+
+    function shouldAutoReview(item) {{
+      if (!item || !item.images || !item.images.length) return false;
+      if (hasAiReviewResult(item)) return false;
+      const state = getAiReviewState(item.id);
+      return !state;
+    }}
+
     function card(item) {{
       const image = item.cover
         ? `<button class="image-button" type="button" data-gallery-id="${{item.id}}"><img src="${{item.cover}}" alt="${{item.title}}" loading="lazy"></button>`
@@ -860,6 +1041,23 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const galleryButton = item.images && item.images.length
         ? `<button type="button" data-gallery-id="${{item.id}}">看圖 ${{item.images.length}} 張</button>`
         : '';
+      const aiReviewState = getAiReviewState(item.id);
+      const aiReviewPending = aiReviewState && ['queued', 'running'].includes(aiReviewState.status);
+      const aiReviewError = aiReviewState && aiReviewState.status === 'failed';
+      const aiReviewStatus = aiReviewPending
+        ? `AI 審核中：${{aiReviewState.message || '準備中'}}`
+        : aiReviewError
+          ? `AI 審核失敗：${{aiReviewState.error || aiReviewState.message || '請稍後再試'}}`
+          : aiReviewState && aiReviewState.status === 'completed'
+            ? `AI 已更新：${{aiReviewState.message || '完成'}}`
+            : hasAiReviewResult(item)
+              ? 'AI 已完成這筆看圖判斷'
+              : item.images && item.images.length
+                ? 'AI 會自動審核這筆房源'
+                : '這筆房源沒有可供 AI 審核的圖片';
+      const aiReviewButton = item.images && item.images.length
+        ? `<button type="button" data-ai-review-id="${{item.id}}"${{aiReviewPending ? ' disabled' : ''}}>${{aiReviewPending ? 'AI 審核中...' : '立刻重跑 AI 審核'}}</button>`
+        : '';
       const reviewStatus = reviewDecisions[item.id] || '';
       const reviewNote = reviewStatus === 'shortlist'
         ? '已標記：不錯，之後優先回看。'
@@ -883,11 +1081,12 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
             <div class="meta-sub">${{metroStation}}</div>
             <div class="meta-sub">${{cookingReason}}</div>
             <div class="meta-sub">${{cookingConfidence}}</div>
+            <div class="meta-sub">${{aiReviewStatus}}</div>
             <div class="meta-sub">${{details || '細節待補'}}</div>
             <div class="desc">${{item.description || '目前沒有額外描述。'}}</div>
             ${{rules}}
             ${{facilities}}
-            <div class="gallery-actions">${{galleryButton}}</div>
+            <div class="gallery-actions">${{galleryButton}}${{aiReviewButton}}</div>
             <div class="review-actions">
               <button class="shortlist" type="button" data-review-id="${{item.id}}" data-review-status="shortlist">不錯</button>
               <button class="skip" type="button" data-review-id="${{item.id}}" data-review-status="skip">先略過</button>
@@ -945,11 +1144,219 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       }}
     }}
 
+    function applyAiReviewResult(listingId, review) {{
+      const item = listings.find(candidate => candidate.id === listingId);
+      if (!item || !review) return;
+      item.cooking_convenience_score = Number(review.score ?? item.cooking_convenience_score);
+      item.cooking_convenience_label = review.label || item.cooking_convenience_label;
+      item.cooking_convenience_reason = review.reason || item.cooking_convenience_reason;
+      item.ai_cooking_confidence = review.confidence ?? item.ai_cooking_confidence;
+      if (galleryState && galleryState.item && galleryState.item.id === listingId) {{
+        renderGallery();
+      }}
+    }}
+
+    async function pollAiReviewJob(jobId, listingId) {{
+      while (true) {{
+        const response = await fetch(`/api/ai-review-jobs/${{jobId}}`);
+        const payload = await response.json();
+        if (!response.ok) {{
+          throw new Error(payload.error || '查詢 AI 進度失敗');
+        }}
+        aiReviewJobs[listingId] = payload;
+        scheduleApplyFilters();
+
+        if (payload.status === 'completed') {{
+          applyAiReviewResult(listingId, payload.review);
+          aiAutoReviewQueued.delete(listingId);
+          setAiStatusMessage(`AI 已完成：${{listings.find(item => item.id === listingId)?.title || listingId}}`);
+          scheduleApplyFilters();
+          return;
+        }}
+        if (payload.status === 'failed') {{
+          aiAutoReviewQueued.delete(listingId);
+          setAiStatusMessage(`AI 失敗：${{payload.error || payload.message || listingId}}`);
+          throw new Error(payload.error || payload.message || 'AI 看圖失敗');
+        }}
+        await new Promise(resolve => window.setTimeout(resolve, 1000));
+      }}
+    }}
+
+    async function reviewListing(listingId, options = {{}}) {{
+      const item = listings.find(candidate => candidate.id === listingId);
+      if (!item || !item.images || !item.images.length) return;
+      const current = getAiReviewState(listingId);
+      const allowQueued = options.allowQueued === true;
+      const isManual = options.manual === true;
+      if (current && current.status === 'running') {{
+        if (isManual) {{
+          setAiStatusMessage(`這筆正在 AI 審核中：${{item.title}}`);
+        }}
+        return;
+      }}
+      if (current && current.status === 'queued' && !allowQueued) {{
+        if (isManual) {{
+          setAiStatusMessage(`這筆已排入 AI 審核隊列：${{item.title}}`);
+          pumpAutoReviewQueue();
+        }}
+        return;
+      }}
+
+      aiReviewJobs[listingId] = {{
+        ...(aiReviewJobs[listingId] || {{}}),
+        job_id: '',
+        listing_id: listingId,
+        status: 'queued',
+        message: options.initialMessage || '準備送出 AI 審核...',
+        review: null,
+        cached: false,
+        error: '',
+      }};
+      setAiStatusMessage(options.initialMessage || `已送出 AI 審核：${{item.title}}`);
+      scheduleApplyFilters();
+
+      try {{
+        const response = await fetch('/api/review-listing', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{
+            input_path: sourceDatasetPath,
+            listing_id: listingId,
+          }}),
+        }});
+        const payload = await response.json();
+        if (!response.ok) {{
+          throw new Error(payload.error || '無法建立 AI 審核工作');
+        }}
+        aiReviewJobs[listingId] = {{
+          ...aiReviewJobs[listingId],
+          ...payload,
+          status: payload.status || 'queued',
+          message: options.startedMessage || 'AI 已接手看圖...',
+        }};
+        setAiStatusMessage(options.startedMessage || `AI 已開始看圖：${{item.title}}`);
+        scheduleApplyFilters();
+        await pollAiReviewJob(payload.job_id, listingId);
+      }} catch (error) {{
+        aiReviewJobs[listingId] = {{
+          ...(aiReviewJobs[listingId] || {{ listing_id: listingId }}),
+          status: 'failed',
+          message: 'AI 看圖失敗',
+          error: error.message,
+        }};
+        aiAutoReviewQueued.delete(listingId);
+        setAiStatusMessage(`AI 看圖失敗：${{item.title}}`);
+        scheduleApplyFilters();
+      }}
+    }}
+
+    function enqueueAutoReview(listingId) {{
+      if (aiAutoReviewQueued.has(listingId)) return;
+      const item = listings.find(candidate => candidate.id === listingId);
+      if (!shouldAutoReview(item)) return;
+
+      aiAutoReviewQueued.add(listingId);
+      aiReviewJobs[listingId] = {{
+        job_id: '',
+        listing_id: listingId,
+        status: 'queued',
+        message: '已自動排入 AI 審核隊列...',
+        review: null,
+        cached: false,
+        error: '',
+      }};
+      aiAutoReviewQueue.push(listingId);
+      scheduleApplyFilters();
+      pumpAutoReviewQueue();
+    }}
+
+    function pumpAutoReviewQueue() {{
+      while (aiReviewActiveCount < AI_AUTO_REVIEW_CONCURRENCY && aiAutoReviewQueue.length) {{
+        const listingId = aiAutoReviewQueue.shift();
+        const item = listings.find(candidate => candidate.id === listingId);
+        if (!item || hasAiReviewResult(item)) {{
+          aiAutoReviewQueued.delete(listingId);
+          continue;
+        }}
+
+        aiReviewActiveCount += 1;
+        reviewListing(listingId, {{
+          allowQueued: true,
+          manual: false,
+          initialMessage: '準備啟動自動 AI 審核...',
+          startedMessage: 'AI 已自動開始看圖...',
+        }}).finally(() => {{
+          aiReviewActiveCount = Math.max(0, aiReviewActiveCount - 1);
+          pumpAutoReviewQueue();
+        }});
+      }}
+    }}
+
+    function scheduleVisibleAutoReviews() {{
+      lastVisibleListingIds
+        .slice(0, AI_AUTO_REVIEW_VISIBLE_LIMIT)
+        .forEach(enqueueAutoReview);
+    }}
+
     function saveReviewDecisions() {{
       try {{
         window.localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(reviewDecisions));
       }} catch (_error) {{
         // Ignore storage failures and keep the page usable.
+      }}
+    }}
+
+    function shortlistedItems() {{
+      return listings.filter(item => reviewDecisions[item.id] === 'shortlist');
+    }}
+
+    function skippedCount() {{
+      return Object.values(reviewDecisions).filter(status => status === 'skip').length;
+    }}
+
+    function updateReviewSummary() {{
+      shortlistedCount = shortlistedItems().length;
+      els.countShortlist.textContent = String(shortlistedCount);
+      els.exportShortlist.disabled = shortlistedCount === 0;
+      els.exportStatus.textContent = shortlistedCount
+        ? `已標記不錯 ${{shortlistedCount}} 筆，先略過 ${{skippedCount()}} 筆。`
+        : '目前還沒有標記為不錯的房源。';
+    }}
+
+    function updateDebugConsole(filtered) {{
+      const runningCount = Object.values(aiReviewJobs).filter(job => job.status === 'running').length;
+      const queuedCount = Object.values(aiReviewJobs).filter(job => job.status === 'queued').length;
+      const completedCount = Object.values(aiReviewJobs).filter(job => job.status === 'completed').length;
+      const failedCount = Object.values(aiReviewJobs).filter(job => job.status === 'failed').length;
+      const activeFilterSummary = [
+        els.q.value ? `搜尋:${{els.q.value}}` : '',
+        els.destination.value ? `目的地:${{els.destination.value}}` : '',
+        els.district.value ? `行政區:${{els.district.value}}` : '',
+        els.platform.value ? `來源:${{els.platform.value}}` : '',
+        els.cookingLevel.value ? `煮飯門檻:${{els.cookingLevel.value}}` : '',
+        els.hasImages.checked ? '只看有圖' : '',
+        `排序:${{els.sortBy.value}}`,
+      ].filter(Boolean).join(' · ');
+
+      if (window.top !== window.self) {{
+        window.parent.postMessage(
+          {{
+            type: 'rent-search-debug',
+            dataset_name: sourceDatasetPath.split(/[\\\\/]/).pop() || sourceDatasetPath,
+            dataset_path: sourceDatasetPath,
+            visible_summary: `顯示 ${{filtered.length}} / 總共 ${{listings.length}} 筆`,
+            filter_summary: activeFilterSummary || '目前沒有額外篩選條件',
+            ai_queue_summary: `running ${{runningCount}} · queued ${{queuedCount}} · done ${{completedCount}} · failed ${{failedCount}}`,
+            ai_status: aiStatusMessage,
+            ai_usage_summary: aiUsageSummary.exists
+              ? `input ${{formatNumber(aiUsageSummary.input_tokens)}} · cached ${{formatNumber(aiUsageSummary.cached_input_tokens)}} · output ${{formatNumber(aiUsageSummary.output_tokens)}} · entries ${{formatNumber(aiUsageSummary.entries)}}`
+              : '目前沒有 AI usage 記錄',
+            ai_last_summary: aiUsageSummary.last_listing_id
+              ? `最近一筆：${{aiUsageSummary.last_listing_id}} @ ${{aiUsageSummary.last_timestamp || '未知時間'}}`
+              : '最近一筆：尚無',
+          }},
+          '*',
+        );
       }}
     }}
 
@@ -960,7 +1367,40 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         reviewDecisions[listingId] = status;
       }}
       saveReviewDecisions();
+      updateReviewSummary();
       scheduleApplyFilters();
+    }}
+
+    async function exportShortlist() {{
+      const items = shortlistedItems();
+      if (!items.length) {{
+        updateReviewSummary();
+        return;
+      }}
+
+      els.exportShortlist.disabled = true;
+      els.exportStatus.textContent = `正在匯出 ${{items.length}} 筆 shortlist...`;
+
+      try {{
+        const response = await fetch('/api/export-shortlist', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{
+            input_path: sourceDatasetPath,
+            destination: getDestinationQuery(),
+            items,
+          }}),
+        }});
+        const payload = await response.json();
+        if (!response.ok) {{
+          throw new Error(payload.error || '匯出 shortlist 失敗');
+        }}
+        els.exportStatus.textContent = `已匯出 ${{payload.count}} 筆 shortlist：${{payload.path}}`;
+      }} catch (error) {{
+        els.exportStatus.textContent = `匯出失敗：${{error.message}}`;
+      }} finally {{
+        updateReviewSummary();
+      }}
     }}
 
     function calculateSearchSpeedScore(durationMs) {{
@@ -1024,6 +1464,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
         return a.price - b.price;
       }});
 
+      lastVisibleListingIds = filtered.map(item => item.id);
       els.results.innerHTML = filtered.map(card).join('');
       els.empty.hidden = filtered.length !== 0;
       els.countVisible.textContent = String(filtered.length);
@@ -1035,6 +1476,8 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       const speedScore = calculateSearchSpeedScore(durationMs);
       els.searchSpeed.textContent = `${{durationMs.toFixed(1)}}ms · ${{searchSpeedLabel(durationMs)}} · ${{speedScore}}分`;
       els.speedHint.textContent = searchSpeedHint(durationMs);
+      updateDebugConsole(filtered);
+      scheduleVisibleAutoReviews();
     }}
 
     function scheduleApplyFilters() {{
@@ -1047,7 +1490,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
 
     function applyPreset(name) {{
       if (name === 'cooking-best') {{
-        els.cookingLevel.value = '3';
+        els.cookingLevel.value = '';
         els.hasImages.checked = true;
         els.sortBy.value = 'cooking-desc';
       }} else if (name === 'review-images') {{
@@ -1077,6 +1520,11 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     [els.q, els.destination, els.district, els.platform, els.maxPrice, els.minArea, els.cookingLevel, els.hasImages, els.sortBy]
       .forEach(el => el.addEventListener('input', scheduleApplyFilters));
     els.results.addEventListener('click', (event) => {{
+      const aiReviewTrigger = event.target.closest('[data-ai-review-id]');
+      if (aiReviewTrigger) {{
+        reviewListing(aiReviewTrigger.getAttribute('data-ai-review-id'), {{ manual: true }});
+        return;
+      }}
       const reviewTrigger = event.target.closest('[data-review-id]');
       if (reviewTrigger) {{
         setReviewDecision(
@@ -1097,6 +1545,7 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
     }});
     els.presetCookingBest.addEventListener('click', () => applyPreset('cooking-best'));
     els.presetReviewImages.addEventListener('click', () => applyPreset('review-images'));
+    els.exportShortlist.addEventListener('click', exportShortlist);
     els.presetReset.addEventListener('click', () => applyPreset('reset'));
     document.addEventListener('keydown', (event) => {{
       if (!galleryState) return;
@@ -1105,6 +1554,8 @@ def render_search_app_html(input_path: str | Path, listings: list[dict[str, obje
       if (event.key === 'ArrowRight') moveGallery(1);
     }});
     loadReviewDecisions();
+    setAiStatusMessage(aiStatusMessage);
+    updateReviewSummary();
     applyFilters();
   </script>
 </body>

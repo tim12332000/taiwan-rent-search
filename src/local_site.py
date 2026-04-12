@@ -13,10 +13,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
+from .ai_cooking_review import review_listing_in_dataset
 from .analysis import NominatimGeocoder, extract_district_from_text
 from .local_site_state import clear_local_site_state, get_local_site_version, write_local_site_state
 from .smart_search import refresh_search_for_destination
-from .webapp import build_default_search_app_path, export_search_app, latest_dataset_path
+from .webapp import (
+    build_default_search_app_path,
+    export_review_shortlist,
+    export_search_app,
+    latest_dataset_path,
+)
 
 
 @dataclass
@@ -36,18 +42,39 @@ class RefreshJob:
     error: str = ""
 
 
+@dataclass
+class AIReviewJob:
+    id: str
+    input_path: str
+    listing_id: str
+    status: str = "queued"
+    message: str = "等待開始..."
+    review: dict[str, object] | None = None
+    cached: bool = False
+    error: str = ""
+
+
 _JOBS: dict[str, RefreshJob] = {}
 _JOBS_LOCK = threading.Lock()
+_AI_REVIEW_JOBS: dict[str, AIReviewJob] = {}
+_AI_REVIEW_JOBS_LOCK = threading.Lock()
 _GEOCODER = NominatimGeocoder()
 
 
-def build_app_url(destination: str = "", lat: float | None = None, lon: float | None = None) -> str:
+def build_app_url(
+    destination: str = "",
+    lat: float | None = None,
+    lon: float | None = None,
+    rev: str = "",
+) -> str:
     params: dict[str, str | float] = {}
     if destination:
         params["destination"] = destination
     if lat is not None and lon is not None:
         params["destination_lat"] = lat
         params["destination_lon"] = lon
+    if rev:
+        params["rev"] = rev
     query = urlencode(params) if params else ""
     return f"/app{f'?{query}' if query else ''}"
 
@@ -101,6 +128,86 @@ def create_refresh_job(destination: str) -> RefreshJob:
 def get_refresh_job(job_id: str) -> RefreshJob | None:
     with _JOBS_LOCK:
         return _JOBS.get(job_id)
+
+
+def build_ai_review_job_payload(job: AIReviewJob) -> dict[str, object]:
+    return {
+        "job_id": job.id,
+        "input_path": job.input_path,
+        "listing_id": job.listing_id,
+        "status": job.status,
+        "message": job.message,
+        "review": job.review,
+        "cached": job.cached,
+        "error": job.error,
+    }
+
+
+def create_ai_review_job(input_path: str, listing_id: str) -> AIReviewJob:
+    job = AIReviewJob(id=uuid.uuid4().hex, input_path=input_path, listing_id=listing_id)
+    with _AI_REVIEW_JOBS_LOCK:
+        _AI_REVIEW_JOBS[job.id] = job
+    return job
+
+
+def get_ai_review_job(job_id: str) -> AIReviewJob | None:
+    with _AI_REVIEW_JOBS_LOCK:
+        return _AI_REVIEW_JOBS.get(job_id)
+
+
+def update_ai_review_job(
+    job_id: str,
+    *,
+    status: str | None = None,
+    message: str | None = None,
+    review: dict[str, object] | None = None,
+    cached: bool | None = None,
+    error: str | None = None,
+) -> AIReviewJob | None:
+    with _AI_REVIEW_JOBS_LOCK:
+        job = _AI_REVIEW_JOBS.get(job_id)
+        if not job:
+            return None
+        if status is not None:
+            job.status = status
+        if message is not None:
+            job.message = message
+        if review is not None:
+            job.review = review
+        if cached is not None:
+            job.cached = cached
+        if error is not None:
+            job.error = error
+        return job
+
+
+def run_ai_review_job(job_id: str) -> None:
+    job = get_ai_review_job(job_id)
+    if not job:
+        return
+
+    try:
+        update_ai_review_job(job_id, status="running", message="AI 正在看圖判斷...")
+        result = review_listing_in_dataset(
+            dataset_path=job.input_path,
+            listing_id=job.listing_id,
+            max_images_per_listing=3,
+        )
+        cached = bool(result.get("cached"))
+        update_ai_review_job(
+            job_id,
+            status="completed",
+            message="已完成 AI 看圖" + ("（使用快取）" if cached else ""),
+            review=result.get("review") if isinstance(result.get("review"), dict) else None,
+            cached=cached,
+        )
+    except Exception as exc:  # pragma: no cover - surfaced through API/UI
+        update_ai_review_job(
+            job_id,
+            status="failed",
+            message="AI 看圖失敗",
+            error=str(exc),
+        )
 
 
 def update_refresh_job(
@@ -196,18 +303,57 @@ def ensure_default_search_app() -> tuple[str | None, str, bool]:
     except FileNotFoundError:
         return (str(stable_path) if stable_path.exists() else None, "", False)
 
-    needs_refresh = (
-        not stable_path.exists()
-        or dataset_path.stat().st_mtime_ns > stable_path.stat().st_mtime_ns
-    )
-    if needs_refresh:
-        export_search_app(dataset_path, stable_path)
-        return str(stable_path), dataset_path.name, True
-    return str(stable_path), dataset_path.name, False
+    export_search_app(dataset_path, stable_path)
+    return str(stable_path), dataset_path.name, True
 
 
-def build_index_html(destination: str = "", app_ready: bool = True, app_source: str = "") -> str:
+def export_shortlist_payload(payload: dict[str, object]) -> dict[str, object]:
+    input_path = str(payload.get("input_path") or "").strip()
+    destination = str(payload.get("destination") or "").strip()
+    raw_items = payload.get("items")
+    if not input_path:
+        raise ValueError("缺少資料集路徑。")
+    if not isinstance(raw_items, list):
+        raise ValueError("shortlist 內容格式不正確。")
+
+    items = [item for item in raw_items if isinstance(item, dict)]
+    if not items:
+        raise ValueError("沒有可匯出的 shortlist。")
+
+    output_path = export_review_shortlist(input_path, items, destination=destination)
+    return {
+        "ok": True,
+        "path": str(output_path),
+        "count": len(items),
+    }
+
+
+def start_listing_review_payload(payload: dict[str, object]) -> dict[str, object]:
+    input_path = str(payload.get("input_path") or "").strip()
+    listing_id = str(payload.get("listing_id") or "").strip()
+    if not input_path:
+        raise ValueError("缺少資料集路徑。")
+    if not listing_id:
+        raise ValueError("缺少房源編號。")
+
+    job = create_ai_review_job(input_path, listing_id)
+    threading.Thread(target=run_ai_review_job, args=(job.id,), daemon=True).start()
+    return {
+        "ok": True,
+        "job_id": job.id,
+        "listing_id": listing_id,
+        "status": job.status,
+    }
+
+
+def build_index_html(
+    destination: str = "",
+    app_ready: bool = True,
+    app_source: str = "",
+    app_revision: str = "",
+) -> str:
     escaped_destination = json.dumps(destination, ensure_ascii=False)
+    escaped_revision = json.dumps(app_revision, ensure_ascii=False)
     helper_text = (
         f"已載入最新資料：{app_source}"
         if app_ready and app_source
@@ -245,13 +391,9 @@ def build_index_html(destination: str = "", app_ready: bool = True, app_source: 
       min-height: 100vh;
     }}
     .toolbar {{
-      position: sticky;
-      top: 0;
-      z-index: 2;
       padding: 18px;
       border-bottom: 1px solid var(--line);
       background: rgba(243,239,231,.94);
-      backdrop-filter: blur(10px);
     }}
     .panel {{
       max-width: 1200px;
@@ -263,6 +405,16 @@ def build_index_html(destination: str = "", app_ready: bool = True, app_source: 
       border: 1px solid var(--line);
       background: var(--panel);
       box-shadow: 0 16px 36px rgba(31,41,55,.08);
+    }}
+    .panel-grid {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px;
+      align-items: start;
+    }}
+    .panel-main {{
+      display: grid;
+      gap: 12px;
     }}
     .panel h1 {{
       margin: 0;
@@ -310,6 +462,46 @@ def build_index_html(destination: str = "", app_ready: bool = True, app_source: 
       color: var(--muted);
       font-size: 14px;
     }}
+    .debug-console {{
+      border: 1px solid rgba(31,41,55,.10);
+      border-radius: 18px;
+      background: rgba(255,255,255,.72);
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.3);
+    }}
+    .debug-header {{
+      padding: 12px 14px;
+      font-weight: 800;
+      color: white;
+      background: linear-gradient(135deg, var(--accent), #115e59);
+    }}
+    .debug-body {{
+      display: grid;
+      gap: 8px;
+      padding: 12px 14px 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }}
+    .debug-row {{
+      display: grid;
+      gap: 4px;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed rgba(31,41,55,.12);
+    }}
+    .debug-row:last-child {{
+      border-bottom: 0;
+      padding-bottom: 0;
+    }}
+    .debug-row strong {{
+      color: var(--ink);
+      font-size: 14px;
+    }}
+    .debug-row code {{
+      display: block;
+      overflow-wrap: anywhere;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      color: var(--ink);
+    }}
     .progress {{
       height: 10px;
       overflow: hidden;
@@ -340,6 +532,9 @@ def build_index_html(destination: str = "", app_ready: bool = True, app_source: 
       box-shadow: 0 14px 34px rgba(31,41,55,.08);
     }}
     @media (max-width: 900px) {{
+      .panel-grid {{
+        grid-template-columns: 1fr;
+      }}
       .controls {{
         grid-template-columns: 1fr;
       }}
@@ -353,21 +548,50 @@ def build_index_html(destination: str = "", app_ready: bool = True, app_source: 
   <main class="page">
     <div class="toolbar">
       <section class="panel">
-        <h1>租屋搜尋控制台</h1>
-        <p>在這裡輸入目的地，按一次就會更新較相關的資料池，然後直接刷新下面的搜尋頁。</p>
-        <div class="status">{helper_text}</div>
-        <div class="controls">
-          <input id="destination" type="search" placeholder="例如：台北市信義區松仁路100號" />
-          <button id="refresh" class="primary" type="button">更新資料</button>
-          <button id="open-app" class="secondary" type="button">另開搜尋頁</button>
+        <div class="panel-grid">
+          <div class="panel-main">
+            <h1>租屋搜尋控制台</h1>
+            <p>在這裡輸入目的地，按一次就會更新較相關的資料池，然後直接刷新下面的搜尋頁。</p>
+            <div class="status">{helper_text}</div>
+            <div class="controls">
+              <input id="destination" type="search" placeholder="例如：台北市信義區松仁路100號" />
+              <button id="refresh" class="primary" type="button">更新資料</button>
+              <button id="open-app" class="secondary" type="button">另開搜尋頁</button>
+            </div>
+            <div id="status" class="status"></div>
+            <div class="progress"><div id="progress-bar" class="progress-bar"></div></div>
+            <div id="progress-meta" class="progress-meta"></div>
+          </div>
+          <aside class="debug-console" aria-label="Console">
+            <div class="debug-header">Console · 細節</div>
+            <div class="debug-body">
+              <div class="debug-row">
+                <span>資料集</span>
+                <strong id="debug-dataset-name">等待搜尋頁回報</strong>
+                <code id="debug-dataset-path">-</code>
+              </div>
+              <div class="debug-row">
+                <span>目前狀態</span>
+                <strong id="debug-visible">-</strong>
+                <span id="debug-filters">-</span>
+              </div>
+              <div class="debug-row">
+                <span>AI 佇列</span>
+                <strong id="debug-ai-queue">-</strong>
+                <span id="debug-ai-status">等待搜尋頁回報</span>
+              </div>
+              <div class="debug-row">
+                <span>AI usage</span>
+                <strong id="debug-ai-usage">-</strong>
+                <span id="debug-ai-last">-</span>
+              </div>
+            </div>
+          </aside>
         </div>
-        <div id="status" class="status"></div>
-        <div class="progress"><div id="progress-bar" class="progress-bar"></div></div>
-        <div id="progress-meta" class="progress-meta"></div>
       </section>
     </div>
     <div class="frame-wrap">
-      <iframe id="app-frame" title="租屋搜尋頁" src="{build_app_url(destination)}"></iframe>
+      <iframe id="app-frame" title="租屋搜尋頁" src="{build_app_url(destination, rev=app_revision)}"></iframe>
     </div>
   </main>
   <script>
@@ -378,7 +602,16 @@ def build_index_html(destination: str = "", app_ready: bool = True, app_source: 
     const progressBar = document.getElementById('progress-bar');
     const progressMeta = document.getElementById('progress-meta');
     const frame = document.getElementById('app-frame');
+    const debugDatasetName = document.getElementById('debug-dataset-name');
+    const debugDatasetPath = document.getElementById('debug-dataset-path');
+    const debugVisible = document.getElementById('debug-visible');
+    const debugFilters = document.getElementById('debug-filters');
+    const debugAiQueue = document.getElementById('debug-ai-queue');
+    const debugAiStatus = document.getElementById('debug-ai-status');
+    const debugAiUsage = document.getElementById('debug-ai-usage');
+    const debugAiLast = document.getElementById('debug-ai-last');
     const initialDestination = {escaped_destination};
+    const appRevision = {escaped_revision};
     if (initialDestination) {{
       destinationInput.value = initialDestination;
     }}
@@ -389,6 +622,7 @@ def build_index_html(destination: str = "", app_ready: bool = True, app_source: 
     function appUrl(destination, resolved = null) {{
       const params = new URLSearchParams();
       if (destination) params.set('destination', destination);
+      if (appRevision) params.set('rev', appRevision);
       if (resolved && resolved.lat !== null && resolved.lat !== undefined && resolved.lon !== null && resolved.lon !== undefined) {{
         params.set('destination_lat', resolved.lat);
         params.set('destination_lon', resolved.lon);
@@ -400,6 +634,18 @@ def build_index_html(destination: str = "", app_ready: bool = True, app_source: 
     function withCacheBuster(url) {{
       const separator = url.includes('?') ? '&' : '?';
       return `${{url}}${{separator}}t=${{Date.now()}}`;
+    }}
+
+    function updateDebugConsole(snapshot) {{
+      if (!snapshot || snapshot.type !== 'rent-search-debug') return;
+      debugDatasetName.textContent = snapshot.dataset_name || '未知資料集';
+      debugDatasetPath.textContent = snapshot.dataset_path || '-';
+      debugVisible.textContent = snapshot.visible_summary || '-';
+      debugFilters.textContent = snapshot.filter_summary || '目前沒有額外篩選條件';
+      debugAiQueue.textContent = snapshot.ai_queue_summary || '-';
+      debugAiStatus.textContent = snapshot.ai_status || '-';
+      debugAiUsage.textContent = snapshot.ai_usage_summary || '目前沒有 AI usage 記錄';
+      debugAiLast.textContent = snapshot.ai_last_summary || '最近一筆：尚無';
     }}
 
     async function resolveDestination(destination) {{
@@ -503,6 +749,10 @@ def build_index_html(destination: str = "", app_ready: bool = True, app_source: 
       syncDestinationToFrame();
     }}
 
+    window.addEventListener('message', (event) => {{
+      updateDebugConsole(event.data);
+    }});
+
     refreshButton.addEventListener('click', refreshData);
     destinationInput.addEventListener('input', () => {{
       window.clearTimeout(syncTimer);
@@ -537,9 +787,19 @@ class LocalSiteHandler(BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
         destination = params.get("destination", [""])[0]
         app_path, app_source, generated = ensure_default_search_app()
+        app_revision = ""
+        if app_path and Path(app_path).exists():
+            app_revision = str(Path(app_path).stat().st_mtime_ns)
 
         if parsed.path == "/":
-            self._send_html(build_index_html(destination, app_ready=bool(app_path), app_source=app_source))
+            self._send_html(
+                build_index_html(
+                    destination,
+                    app_ready=bool(app_path),
+                    app_source=app_source,
+                    app_revision=app_revision,
+                )
+            )
             return
 
         if parsed.path == "/app":
@@ -567,17 +827,35 @@ class LocalSiteHandler(BaseHTTPRequestHandler):
             self._send_json(build_job_payload(job))
             return
 
+        if parsed.path.startswith("/api/ai-review-jobs/"):
+            job_id = parsed.path.rsplit("/", 1)[-1]
+            job = get_ai_review_job(job_id)
+            if not job:
+                self._send_json({"error": "找不到 AI 工作"}, status=HTTPStatus.NOT_FOUND)
+                return
+            self._send_json(build_ai_review_job_payload(job))
+            return
+
         self.send_error(HTTPStatus.NOT_FOUND, "Not Found")
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path != "/api/refresh":
+        if parsed.path not in {"/api/refresh", "/api/export-shortlist", "/api/review-listing"}:
             self.send_error(HTTPStatus.NOT_FOUND, "Not Found")
             return
 
         try:
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
+
+            if parsed.path == "/api/export-shortlist":
+                self._send_json(export_shortlist_payload(payload))
+                return
+
+            if parsed.path == "/api/review-listing":
+                self._send_json(start_listing_review_payload(payload), status=HTTPStatus.ACCEPTED)
+                return
+
             destination = str(payload.get("destination", "")).strip()
             if not destination:
                 self._send_json({"error": "請輸入目的地地址。"}, status=HTTPStatus.BAD_REQUEST)
@@ -593,6 +871,8 @@ class LocalSiteHandler(BaseHTTPRequestHandler):
                 },
                 status=HTTPStatus.ACCEPTED,
             )
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
         except Exception as exc:  # pragma: no cover - exercised via tests on helper seams
             self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
@@ -603,6 +883,8 @@ class LocalSiteHandler(BaseHTTPRequestHandler):
         encoded = html_text.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -611,6 +893,8 @@ class LocalSiteHandler(BaseHTTPRequestHandler):
         encoded = build_json_response(payload)
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -619,6 +903,8 @@ class LocalSiteHandler(BaseHTTPRequestHandler):
         encoded = path.read_bytes()
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)

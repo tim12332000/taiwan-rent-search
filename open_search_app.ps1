@@ -76,39 +76,35 @@ function Get-AvailablePort {
 $port = 8765
 $expectedVersion = Get-ExpectedLocalSiteVersion
 $status = Get-LocalSiteStatus -Port $port
-$restartRequired = $false
+Stop-TrackedLocalSite
+Start-Sleep -Milliseconds 300
+$status = $null
 
-if ($status -and $status.ok -eq $true) {
-    if ($status.version -ne $expectedVersion) {
-        Stop-TrackedLocalSite
-        Start-Sleep -Milliseconds 300
-        $status = $null
-        $restartRequired = $true
-    }
+if (-not (Test-PortAvailable -Port $port)) {
+    $port = Get-AvailablePort
 }
 
-if (-not $status -or $status.ok -ne $true) {
-    if (-not (Test-PortAvailable -Port $port)) {
-        $port = Get-AvailablePort
+Start-Process pythonw -ArgumentList "-m", "src.local_site", "--host", "127.0.0.1", "--port", $port, "--no-browser"
+
+$deadline = (Get-Date).AddSeconds(6)
+do {
+    Start-Sleep -Milliseconds 400
+    $status = Get-LocalSiteStatus -Port $port
+    if ($status -and $status.ok -eq $true -and $status.version -eq $expectedVersion) {
+        break
     }
+} while ((Get-Date) -lt $deadline)
 
-    Start-Process pythonw -ArgumentList "-m", "src.local_site", "--host", "127.0.0.1", "--port", $port, "--no-browser"
-
-    $deadline = (Get-Date).AddSeconds(6)
-    do {
-        Start-Sleep -Milliseconds 400
-        $status = Get-LocalSiteStatus -Port $port
-        if ($status -and $status.ok -eq $true) {
-            break
-        }
-    } while ((Get-Date) -lt $deadline)
-
-    if (-not $status -or $status.ok -ne $true) {
-        throw "Local search site did not start in time."
-    }
+if (-not $status -or $status.ok -ne $true -or $status.version -ne $expectedVersion) {
+    throw "Local search site did not start in time."
 }
 
 $siteUrl = "http://127.0.0.1:{0}/" -f $port
 if (-not $NoBrowser) {
     Start-Process $siteUrl
+    try {
+        Start-Process pythonw -ArgumentList "-m", "src.ai_cooking_review", "--latest", "--max-listings", "8", "--max-images", "3", "--refresh-search-app"
+    } catch {
+        Write-Warning "AI image review refresh failed to start in the background."
+    }
 }

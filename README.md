@@ -182,6 +182,28 @@ python -m src.songren_100_case --open
 python -m src.songren_100_case --ai-review-max-listings 3 --ai-review-max-images 2 --open
 ```
 
+### Runtime Smoke Test
+
+第一次使用時先安裝 Playwright browser runtime：
+
+```powershell
+python -m playwright install chromium
+```
+
+```powershell
+python -m src.runtime_smoke
+```
+
+如果想讓結果更適合自動化管線讀取：
+
+```powershell
+python -m src.runtime_smoke --json
+```
+
+Runtime smoke 會用 Playwright headless Chromium 驗證本機站、iframe 與 preset 互動，並把 trace 留在：
+
+- `.omx/runtime-smoke/`
+
 ## 專案結構
 
 ```text
@@ -215,7 +237,8 @@ taiwan-rent-search/
 目前最新驗證基線：
 
 - `pytest tests -q`
-- `119 passed`
+- `136 passed`
+- `python -m src.runtime_smoke --json`
 
 ## 現況總結
 

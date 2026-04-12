@@ -7,7 +7,9 @@ from pathlib import Path
 
 from src.webapp import (
     build_default_search_app_path,
+    build_review_shortlist_output_path,
     build_search_app_output_path,
+    export_review_shortlist,
     export_search_app,
     listing_to_view_model,
     prepare_listing_view_models,
@@ -160,6 +162,21 @@ def test_prepare_listing_view_models_merges_adjacent_ai_reviews(tmp_path):
     assert models[0]["ai_cooking_confidence"] == 0.91
 
 
+def test_prepare_listing_view_models_allows_ai_score_zero_to_override(tmp_path):
+    csv_path = tmp_path / "sample.csv"
+    write_sample_csv(csv_path)
+    (tmp_path / "ai_cooking_reviews.json").write_text(
+        '{"591-1":{"label":"不適合煮飯","score":0,"confidence":0.83,"reason":"AI 看圖判定缺少廚房與爐具"}}',
+        encoding="utf-8",
+    )
+
+    models = prepare_listing_view_models(csv_path)
+
+    assert models[0]["cooking_convenience_score"] == 0
+    assert models[0]["cooking_convenience_label"] == "不適合煮飯"
+    assert models[0]["cooking_convenience_reason"] == "AI 看圖判定缺少廚房與爐具"
+
+
 def test_render_search_app_html_contains_filters_and_data(tmp_path):
     csv_path = tmp_path / "sample.csv"
     write_sample_csv(csv_path)
@@ -198,19 +215,46 @@ def test_render_search_app_html_contains_filters_and_data(tmp_path):
     assert "可煮飯：" in html_text
     assert "可煮飯判斷：" in html_text
     assert "AI 信心：" in html_text
+    assert "立刻重跑 AI 審核" in html_text
+    assert "AI 審核中..." in html_text
+    assert "AI 會自動審核這筆房源" in html_text
+    assert 'id="ai-status"' in html_text
+    assert "updateDebugConsole" in html_text
+    assert "aiUsageSummary" in html_text
+    assert "window.parent.postMessage" in html_text
+    assert "rent-search-debug" in html_text
+    assert "setAiStatusMessage" in html_text
+    assert "這筆已排入 AI 審核隊列" in html_text
+    assert "這筆正在 AI 審核中" in html_text
+    assert "reviewListing" in html_text
+    assert "pollAiReviewJob" in html_text
+    assert "applyAiReviewResult" in html_text
+    assert "enqueueAutoReview" in html_text
+    assert "pumpAutoReviewQueue" in html_text
+    assert "scheduleVisibleAutoReviews" in html_text
+    assert "AI_AUTO_REVIEW_CONCURRENCY" in html_text
+    assert "/api/review-listing" in html_text
+    assert "/api/ai-review-jobs/" in html_text
     assert "gallery-modal" in html_text
     assert "openGallery" in html_text
     assert "moveGallery" in html_text
     assert "preset-cooking-best" in html_text
     assert "preset-review-images" in html_text
+    assert "export-shortlist" in html_text
     assert "preset-reset" in html_text
     assert "先看最能煮飯" in html_text
+    assert "els.cookingLevel.value = '';" in html_text
     assert "看圖審核" in html_text
+    assert "匯出 shortlist" in html_text
     assert "全部重設" in html_text
     assert "applyPreset" in html_text
     assert "REVIEW_STORAGE_KEY" in html_text
     assert "loadReviewDecisions" in html_text
     assert "setReviewDecision" in html_text
+    assert "exportShortlist" in html_text
+    assert "/api/export-shortlist" in html_text
+    assert "count-shortlist" in html_text
+    assert "sourceDatasetPath" in html_text
     assert "不錯" in html_text
     assert "先略過" in html_text
     assert "清除標記" in html_text
@@ -233,6 +277,48 @@ def test_build_default_search_app_path_is_stable():
     path = build_default_search_app_path()
     assert path.parent.name == "data"
     assert path.name == "search_app.html"
+
+
+def test_build_review_shortlist_output_path_uses_dataset_directory():
+    path = build_review_shortlist_output_path("data/cases/songren_100/current_dataset.csv")
+
+    assert path.parent.as_posix().endswith("data/cases/songren_100")
+    assert path.name.startswith("current_dataset_shortlist_")
+
+
+def test_export_review_shortlist_writes_markdown(tmp_path):
+    dataset_path = tmp_path / "current_dataset.csv"
+    dataset_path.write_text("id\n1\n", encoding="utf-8")
+    output_path = tmp_path / "review_shortlist.md"
+
+    path = export_review_shortlist(
+        dataset_path,
+        [
+            {
+                "id": "591-1",
+                "platform": "591",
+                "title": "可開伙套房",
+                "price": 18000,
+                "district": "信義區",
+                "area": "松仁路",
+                "floor_area": 12.0,
+                "cooking_convenience_label": "適合煮飯",
+                "cooking_convenience_reason": "AI 與文字都顯示可正常備餐",
+                "ai_cooking_confidence": 0.93,
+                "url": "https://rent.591.com.tw/1",
+            }
+        ],
+        destination="台北市信義區松仁路100號",
+        output_path=output_path,
+    )
+
+    assert path == output_path
+    text = output_path.read_text(encoding="utf-8")
+    assert "# 租屋 shortlist" in text
+    assert "匯出筆數: `1`" in text
+    assert "可開伙套房" in text
+    assert "AI 信心：93%" in text
+    assert "https://rent.591.com.tw/1" in text
 
 
 def test_export_search_app_writes_html(tmp_path):

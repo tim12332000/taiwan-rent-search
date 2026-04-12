@@ -514,8 +514,8 @@ def test_build_html_output_path_uses_input_stem():
 def test_latest_dataset_path_picks_newest_file(tmp_path):
     older = tmp_path / "591_a.csv"
     newer = tmp_path / "591_b.csv"
-    older.write_text("x", encoding="utf-8")
-    newer.write_text("x", encoding="utf-8")
+    older.write_text("id,title\n1," + ("a" * 1500), encoding="utf-8")
+    newer.write_text("id,title\n2," + ("b" * 1500), encoding="utf-8")
     older.touch()
     newer.touch()
 
@@ -525,8 +525,8 @@ def test_latest_dataset_path_picks_newest_file(tmp_path):
 def test_latest_dataset_path_skips_analysis_outputs(tmp_path):
     source = tmp_path / "591-ddroom-housefun-mixrent_taipei_20260407_003704.csv"
     analysis = tmp_path / "591-ddroom-housefun-mixrent_taipei_20260407_003704_analysis_20260407_004000.csv"
-    source.write_text("x", encoding="utf-8")
-    analysis.write_text("x", encoding="utf-8")
+    source.write_text("id,title\n1," + ("a" * 1500), encoding="utf-8")
+    analysis.write_text("id,title\n1," + ("b" * 1500), encoding="utf-8")
     source.touch()
     analysis.touch()
 

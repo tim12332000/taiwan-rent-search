@@ -1,11 +1,16 @@
 from src.local_site import (
+    build_ai_review_job_payload,
     build_app_url,
     build_index_html,
     build_job_payload,
     build_json_response,
+    create_ai_review_job,
     create_refresh_job,
     ensure_default_search_app,
+    export_shortlist_payload,
     resolve_destination_payload,
+    start_listing_review_payload,
+    update_ai_review_job,
     update_refresh_job,
 )
 from src.local_site_state import (
@@ -31,8 +36,14 @@ def test_build_app_url_includes_coordinates_when_available():
     assert "destination_lon=121.566" in url
 
 
+def test_build_app_url_includes_revision_when_available():
+    url = build_app_url("台北市信義區松仁路100號", rev="12345")
+
+    assert "rev=12345" in url
+
+
 def test_build_index_html_contains_controls_and_iframe():
-    html = build_index_html("台北市信義區松仁路100號")
+    html = build_index_html("台北市信義區松仁路100號", app_revision="12345")
 
     assert "租屋搜尋控制台" in html
     assert "更新資料" in html
@@ -43,7 +54,56 @@ def test_build_index_html_contains_controls_and_iframe():
     assert "目前累積" in html
     assert "syncDestinationToFrame" in html
     assert "withCacheBuster" in html
+    assert "position: sticky" not in html
+    assert "Console · 細節" in html
+    assert "updateDebugConsole" in html
+    assert "rent-search-debug" in html
+    assert "appRevision" in html
+    assert "rev=12345" in html
     assert "台北市信義區松仁路100號" in html
+
+
+def test_build_ai_review_job_payload_contains_review_fields():
+    job = create_ai_review_job("data/current_dataset.csv", "591-1")
+    update_ai_review_job(job.id, status="completed", message="done", review={"label": "適合煮飯"}, cached=True)
+    payload = build_ai_review_job_payload(job)
+
+    assert payload["listing_id"] == "591-1"
+    assert payload["status"] == "completed"
+    assert payload["review"] == {"label": "適合煮飯"}
+    assert payload["cached"] is True
+
+
+def test_export_shortlist_payload_writes_markdown(monkeypatch, tmp_path):
+    dataset_path = tmp_path / "current_dataset.csv"
+    dataset_path.write_text("id\n1\n", encoding="utf-8")
+    output_path = tmp_path / "current_dataset_shortlist.md"
+
+    monkeypatch.setattr("src.local_site.export_review_shortlist", lambda input_path, items, destination="": output_path)
+
+    payload = export_shortlist_payload(
+        {
+            "input_path": str(dataset_path),
+            "destination": "台北市信義區松仁路100號",
+            "items": [{"id": "591-1", "title": "可開伙套房"}],
+        }
+    )
+
+    assert payload["ok"] is True
+    assert payload["count"] == 1
+    assert payload["path"] == str(output_path)
+
+
+def test_start_listing_review_payload_creates_job(monkeypatch):
+    calls = []
+    monkeypatch.setattr("src.local_site.threading.Thread", lambda target, args, daemon: type("T", (), {"start": lambda self: calls.append((target, args, daemon))})())
+
+    payload = start_listing_review_payload({"input_path": "data/current_dataset.csv", "listing_id": "591-1"})
+
+    assert payload["ok"] is True
+    assert payload["listing_id"] == "591-1"
+    assert payload["status"] == "queued"
+    assert calls
 
 
 def test_build_index_html_shows_missing_data_hint():
@@ -57,6 +117,15 @@ def test_build_json_response_emits_utf8_json_bytes():
 
     assert b'"ok": true' in payload
     assert "完成".encode("utf-8") in payload
+
+
+def test_export_shortlist_payload_rejects_missing_items():
+    try:
+        export_shortlist_payload({"input_path": "data/current_dataset.csv", "items": []})
+    except ValueError as exc:
+        assert str(exc) == "沒有可匯出的 shortlist。"
+    else:  # pragma: no cover - safety assertion
+        raise AssertionError("Expected ValueError for empty shortlist")
 
 
 def test_resolve_destination_payload_returns_coordinates(monkeypatch):

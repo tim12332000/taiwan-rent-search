@@ -42,6 +42,7 @@ COUNTY_ALIASES = {
     "臺南市": "台南市",
     "高雄市": "高雄市",
 }
+MIN_REALISTIC_DATASET_BYTES = 1024
 
 KITCHEN_SINK_EXPLICIT_KEYWORDS = (
     "流理台",
@@ -216,9 +217,17 @@ def latest_dataset_path(data_dir: str | Path = "data") -> Path:
     def is_source_dataset(path: Path) -> bool:
         return path.suffix == ".csv" and "_analysis_" not in path.stem
 
+    def dataset_sort_key(path: Path) -> tuple[int, int, str]:
+        stat = path.stat()
+        return (
+            1 if stat.st_size >= MIN_REALISTIC_DATASET_BYTES else 0,
+            stat.st_mtime_ns,
+            path.name,
+        )
+
     datasets = sorted(
         (path for path in Path(data_dir).glob("*.csv") if is_source_dataset(path)),
-        key=lambda path: (path.stat().st_mtime_ns, path.name),
+        key=dataset_sort_key,
         reverse=True,
     )
     if not datasets:

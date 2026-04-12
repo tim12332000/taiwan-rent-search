@@ -1330,10 +1330,11 @@ class TestCsvExport:
             ("台北市", "信義區", "台北市信義區松仁路100號", 4),
         ]
 
-    def test_scrape_sources_with_focus_reports_progress(self, monkeypatch):
+    def test_scrape_sources_with_focus_reports_progress(self, monkeypatch, tmp_path):
         messages = []
         base_591 = [self._sample_records()[0]]
         base_mixrent = [self._sample_records()[1]]
+        output = tmp_path / "focused.csv"
 
         monkeypatch.setattr(
             Fang591Scraper,
@@ -1355,6 +1356,7 @@ class TestCsvExport:
             ["591", "mixrent", "ddroom"],
             "台北市",
             destination_address="台北市信義區松仁路100號",
+            output_path=output,
             delay=0,
             base_max_pages=1,
             focus_max_pages=1,

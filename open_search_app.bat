@@ -2,6 +2,6 @@
 setlocal
 
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0open_search_app.ps1"
+wscript.exe "%~dp0open_search_app.vbs"
 
 endlocal
